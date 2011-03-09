@@ -38,7 +38,7 @@ from RegionFrame import RegionFrame
 from HTM.Region import Region
 from HTM.Synapse import Synapse
 
-SIGF = "{:.2f}" #2 significant digits float string format code
+SIGF = "{0:.2f}" #2 significant digits float string format code
 
 class CameraFrame(wx.Frame):
   """
