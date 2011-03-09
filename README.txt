@@ -2,11 +2,11 @@ The HTM Camera Toolkit is a research application that allows easy experimentatio
 
 I haven't set up any formal installers as of yet.  So to run the toolkit you will need the following installed:
 
-Python 2.7
+Python 2.7 (or 2.6)
 wxPython 2.8
 Python Imaging Library (PIL) 1.1.7
 Numpy 1.5.1
-OpenCV 2.2
+OpenCV 2.2 (or 2.1 if using Python 2.6)
 
 You get download them from their websites, respectively:
 
@@ -16,7 +16,9 @@ http://www.pythonware.com/products/pil/
 http://sourceforge.net/projects/numpy/files/NumPy/1.5.1/
 http://opencv.willowgarage.com/wiki/
 
-Once you have all of the above, you can run the toolkit from a command-line:
+I have only tested on Win7-64 and Vista-32 however all the code libraries used are available for Mac and Linux as well so there are good odds it will also run on those platforms.
+
+Once you have all of the above installed with proper PATH and PYTHONPATH environment variables set up, you can run the toolkit from a command-line:
 
 python CameraToolkit.py
 
