@@ -1098,7 +1098,7 @@ class RegionParamsPanel(wx.Panel):
       for cell in col.cells:
         if cell.isPredicting:
           for seg in cell.segments:
-            if seg.isSequence:
+            if seg.isActive() and seg.isSequence:
               self.predictedCols[col.cx][col.cy] = 1
               break
     
