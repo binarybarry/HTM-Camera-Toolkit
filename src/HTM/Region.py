@@ -56,7 +56,7 @@ from HTM.Synapse import Synapse
 
 RAD_BIAS_PEAK = 2 #input-bit radius bias peak for default proximal perms
 RAD_BIAS_STD_DEV = 0.25 #input-bit radius standard deviation bias
-DEBUG = False
+DEBUG = True
 
 class Region(object):
   """
@@ -146,14 +146,6 @@ class Region(object):
     #how far apart are 2 Columns in terms of input space; calc radius from that
     inputRadius = self.localityRadius*self.xSpace
     
-    #desiredLocalActivity A parameter controlling the number of columns that will be 
-    #  winners after the inhibition step.
-    if self.localityRadius==0:
-      self.desiredLocalActivity = (self.inputWidth*self.inputHeight) * pctLocalActivity
-    else:
-      self.desiredLocalActivity = (self.localityRadius**2) * pctLocalActivity
-    self.desiredLocalActivity = int(max(2, round(self.desiredLocalActivity))) #at least 1
-    
     #Now connect all potentialSynapses for the Columns
     if self.localityRadius==0:
       synapsesPerSegment = int((self.inputWidth*self.inputHeight) * pctInputPerCol)
@@ -164,16 +156,6 @@ class Region(object):
     #  considered during the inhibition step.
     self.minOverlap = synapsesPerSegment * pctMinOverlap
     
-    if DEBUG:
-      print "\nRegion Created"
-      print "columnGrid = ",self.outData.shape
-      print "xSpace, ySpace = ",self.xSpace, self.ySpace
-      print "inputRadius = ",inputRadius
-      print "desiredLocalActivity = ", self.desiredLocalActivity
-      print "synapsesPerProximalSegment = ", synapsesPerSegment
-      print "minOverlap = ",self.minOverlap
-      print "conPerm,permInc = ", Synapse.CONNECTED_PERM, Synapse.PERMANENCE_INC
-      
     longerSide = max(self.inputWidth, self.inputHeight)
     random.seed(42) #same connections each time for easier debugging
     
@@ -203,6 +185,24 @@ class Region(object):
         col.proximalSegment.addSynapse(syn)
         
     self.inhibitionRadius = self.__averageReceptiveFieldSize()
+    
+    #desiredLocalActivity A parameter controlling the number of columns that will be 
+    #  winners after the inhibition step.
+    if self.localityRadius==0:
+      self.desiredLocalActivity = self.inhibitionRadius * pctLocalActivity
+    else:
+      self.desiredLocalActivity = (self.localityRadius**2) * pctLocalActivity
+    self.desiredLocalActivity = int(max(2, round(self.desiredLocalActivity))) #at least 1
+    
+    if DEBUG:
+      print "\nRegion Created"
+      print "columnGrid = ",self.outData.shape
+      print "xSpace, ySpace = ",self.xSpace, self.ySpace
+      print "inputRadius = ",inputRadius
+      print "desiredLocalActivity = ", self.desiredLocalActivity
+      print "synapsesPerProximalSegment = ", synapsesPerSegment
+      print "minOverlap = ",self.minOverlap
+      print "conPerm,permInc = ", Synapse.CONNECTED_PERM, Synapse.PERMANENCE_INC
   
   def runOnce(self):
     """
