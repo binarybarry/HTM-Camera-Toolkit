@@ -133,6 +133,7 @@ class CameraWindow(wx.Panel):
     
     self._isPlaying = False
     self._isPaused = False
+    self._isLooping = False
     self._capture = None
     self._frameOut = None
     self._videoWriter = None
@@ -170,6 +171,8 @@ class CameraWindow(wx.Panel):
     forwardDimImg = Image.open(imgDir+"forward_dim_36_26.png")
     stopImg = Image.open(imgDir+"stop_36_26.png")
     stopDimImg = Image.open(imgDir+"stop_dim_36_26.png")
+    loopImg = Image.open(imgDir+"loop_32_26.png")
+    loopDimImg = Image.open(imgDir+"loop_dim_32_26.png")
     
     playIcon = wx.BitmapFromImage(convertToWxImage(playImg))
     playDimIcon = wx.BitmapFromImage(convertToWxImage(playDimImg))
@@ -179,6 +182,8 @@ class CameraWindow(wx.Panel):
     forwardDimIcon = wx.BitmapFromImage(convertToWxImage(forwardDimImg))
     stopIcon = wx.BitmapFromImage(convertToWxImage(stopImg))
     stopDimIcon = wx.BitmapFromImage(convertToWxImage(stopDimImg))
+    loopIcon = wx.BitmapFromImage(convertToWxImage(loopImg))
+    loopDimIcon = wx.BitmapFromImage(convertToWxImage(loopDimImg))
     
     
     #set UI controls
@@ -239,10 +244,22 @@ class CameraWindow(wx.Panel):
     self.stopButton.SetBitmapDisabled(stopDimIcon)
     self.stopButton.Bind(wx.EVT_BUTTON, self.stopRun)
     
+    self.loopButton = wx.BitmapButton(playPanel, 4, loopIcon)
+    self.loopButton.SetToolTipString("Loop")
+    self.loopButton.SetBitmapDisabled(loopDimIcon)
+    self.loopButton.Bind(wx.EVT_BUTTON, self.loopRun)
+    
+    self.loopSpin = wx.SpinCtrl(playPanel, size=(60,-1), style=wx.SP_ARROW_KEYS)
+    self.loopSpin.SetToolTipString("Playback for this many iterations if loop is enabled")
+    self.loopSpin.SetRange(0, 1000)
+    self.loopSpin.SetValue(10)
+    
     hSizerPlay.Add(self.playButton, 0, wx.ALIGN_CENTER | wx.RIGHT, border=5)
     hSizerPlay.Add(self.pauseButton, 0, wx.ALIGN_CENTER | wx.RIGHT, border=5)
     hSizerPlay.Add(self.forwardButton, 0, wx.ALIGN_CENTER | wx.RIGHT, border=5)
-    hSizerPlay.Add(self.stopButton, 0, wx.ALIGN_CENTER | wx.LEFT, border=20)
+    hSizerPlay.Add(self.stopButton, 0, wx.ALIGN_CENTER | wx.LEFT, border=10)
+    hSizerPlay.Add(self.loopButton, 0, wx.ALIGN_CENTER | wx.LEFT, border=10)
+    hSizerPlay.Add(self.loopSpin, 0, wx.ALIGN_CENTER | wx.LEFT, border=5)
     playPanel.SetSizer(hSizerPlay)
     
     inputBox.Add(camPanel, 1, wx.EXPAND | wx.BOTTOM, border=5)
@@ -266,11 +283,11 @@ class CameraWindow(wx.Panel):
     self.permConSpin = wx.SpinCtrl(self, 0, size=(70,-1), style=wx.SP_ARROW_KEYS)
     self.permConSpin.SetValue(20)
     self.permInitSpin = wx.SpinCtrl(self, 1, size=(70,-1), style=wx.SP_ARROW_KEYS)
-    self.permInitSpin.SetValue(20)
+    self.permInitSpin.SetValue(22)
     self.permIncSpin = wx.SpinCtrl(self, 2, size=(70,-1), style=wx.SP_ARROW_KEYS)
     self.permIncSpin.SetValue(5)
     self.permDecSpin = wx.SpinCtrl(self, 3, size=(70,-1), style=wx.SP_ARROW_KEYS)
-    self.permDecSpin.SetValue(4)
+    self.permDecSpin.SetValue(2)
     
     self.permConSpin.Bind(wx.EVT_SPINCTRL, self.onPermConnectedSpin)
     self.permInitSpin.Bind(wx.EVT_SPINCTRL, self.onPermInitSpin)
@@ -409,6 +426,9 @@ class CameraWindow(wx.Panel):
     self.pauseButton.Enable(self._isPlaying or self._isPaused)
     self.forwardButton.Enable(not self._isPlaying)
     self.stopButton.Enable(self._isPlaying or self._isPaused)
+    self.loopButton.Enable(self.fileButton.GetValue())
+    
+    self.loopSpin.Enable(self.fileButton.GetValue() and not self._isLooping)
     
     self.cameraButton.Enable(not self._isPlaying and not self._isPaused)
     self.fileButton.Enable(not self._isPlaying and not self._isPaused)
@@ -491,6 +511,14 @@ class CameraWindow(wx.Panel):
       self.canvas1.setBitmap(wx.NullBitmap)
     self.refreshPlaybackEnablement()
   
+  def loopRun(self, evt=None):
+    """ Perform the 'Loop' action, either from user button click or internal force. """
+    if self._isLooping:
+      self._isLooping = False
+    else:
+      self._isLooping = True
+    self.refreshPlaybackEnablement()
+  
   def recordToggleRun(self, evt=None):
     """ Camera Recording on/off was toggled by user. """
     if not self.recordToggle.GetValue():
@@ -560,8 +588,20 @@ class CameraWindow(wx.Panel):
     self._lastFrameTime = tsec
     
     frame = cv.QueryFrame(self._capture)
-    if not frame: #if no more frames, stop stream
-      self.stopRun()
+    if not frame: #if no more frames, restart if looping else stop stream
+      if self._isLooping:
+        loopCount = self.loopSpin.GetValue()
+        if loopCount <= 0:
+          self._isLooping = False
+          self.stopRun()
+        else:
+          loopCount -= 1
+          self.loopSpin.SetValue(loopCount)
+          del self._capture
+          self.createCapture()
+          frame = cv.QueryFrame(self._capture)
+      else:
+        self.stopRun()
       return
     
     #if video file's frame size incorrect, resize to what region expects
@@ -661,7 +701,7 @@ class CameraWindow(wx.Panel):
 #                    countPtr, c_double(0.05), c_double(5.0), None, 3, 0, c_double(0.04))
     
     #(src, dest, threshold, maxVal, type)
-    cv.Threshold(self._diffImage, self._threshImage, 17.0, 255.0, cv.CV_THRESH_BINARY)
+    cv.Threshold(self._diffImage, self._threshImage, 16.0, 255.0, cv.CV_THRESH_BINARY)
     
     #For now, disable segmentMotion and return all motion in frame...
     if self._threshImage!=None:
@@ -670,12 +710,12 @@ class CameraWindow(wx.Panel):
     ###Experimental: segment motion to return only the most 'interesting' area
     tsec = clock()
     #(silhouette, mhi, timestamp, duration)
-    cv.UpdateMotionHistory(self._threshImage, self._historyImage, tsec, 1.0)
+    cv.UpdateMotionHistory(self._threshImage, self._historyImage, tsec, 0.3)
 
     #(mhi, segMask, storage, timestamp, segThresh)
     #return: [tuple(area, value, rect)], (float, CvScalar, CvRect)
     seqs = cv.SegmentMotion(self._historyImage, self._segMaskImage, \
-                            self._memStorage, tsec, 3.0)
+                            self._memStorage, tsec, 1.0)
     
     #cv.Copy(self._threshImage, self._inputImage)
     #cv.Threshold(self._segMaskImage, self._threshImage, 0.0, 250.0, CV_THRESH_BINARY)
@@ -776,6 +816,10 @@ class RegionParamsPanel(wx.Panel):
     self.region = None
     self._nextRegionParams = None
     
+    pad = 0 #default some region 1 params slightly different from rest
+    if id>1:
+      pad = 5
+    
     #set UI controls
     self.staticBox = wx.StaticBox(self, -1, "Region")
     inputBox = wx.StaticBoxSizer(self.staticBox, orient=wx.VERTICAL)
@@ -833,13 +877,13 @@ class RegionParamsPanel(wx.Panel):
     statusText.SetToolTipString("Current state of the Region.")
     
     self.inputPerColSpin = wx.SpinCtrl(panel, size=(70,-1), style=wx.SP_ARROW_KEYS)
-    self.inputPerColSpin.SetValue(20)
+    self.inputPerColSpin.SetValue(15+pad)
     self.minOverlapSpin = wx.SpinCtrl(panel, size=(70,-1), style=wx.SP_ARROW_KEYS)
     self.minOverlapSpin.SetValue(10)
     self.localityRadSpin = wx.SpinCtrl(panel, size=(70,-1), style=wx.SP_ARROW_KEYS)
     self.localityRadSpin.SetValue(5)
     self.desireLocalSpin = wx.SpinCtrl(panel, size=(70,-1), style=wx.SP_ARROW_KEYS)
-    self.desireLocalSpin.SetValue(20)
+    self.desireLocalSpin.SetValue(10)
     self.cellsPerColSpin = wx.SpinCtrl(panel, size=(70,-1), style=wx.SP_ARROW_KEYS)
     self.cellsPerColSpin.SetRange(1,4)
     self.cellsPerColSpin.SetValue(1)
