@@ -50,7 +50,7 @@ Phase 3: update synapse permanence and internal variables
 
 import random
 import numpy
-from math import exp, sqrt
+from math import exp, sqrt, ceil
 from HTM.Column import Column
 from HTM.Synapse import Synapse
 
@@ -183,7 +183,10 @@ class Region(object):
         localityBias = (RAD_BIAS_PEAK/0.4)*exp((distance/(longerSide*RAD_BIAS_STD_DEV))**2/-2)
         syn = Synapse(inputCell, permanence*localityBias)
         col.proximalSegment.addSynapse(syn)
-        
+    
+#    if self.localityRadius>0:
+#      self.inhibitionRadius = self.localityRadius
+#    else:
     self.inhibitionRadius = self.__averageReceptiveFieldSize()
     
     #desiredLocalActivity A parameter controlling the number of columns that will be 
@@ -319,11 +322,12 @@ class Region(object):
     """
     Return the list of all the columns that are within inhibitionRadius of the input column.
     """
-    x0 = max(0, min(column.cx-1, int(round(column.cx-self.inhibitionRadius))))
-    y0 = max(0, min(column.cy-1, int(round(column.cy-self.inhibitionRadius))))
-    x1 = min(self.width, max(column.cx+1, int(round(column.cx+self.inhibitionRadius))))
-    y1 = min(self.height, max(column.cy+1, int(round(column.cy+self.inhibitionRadius))))
-#    print "neighbors of col(",column.ix,column.iy,") = ",x0,y0,",",x1,y1
+    irad = int(round(self.inhibitionRadius))
+    x0 = max(0, min(column.cx-1, column.cx-irad))
+    y0 = max(0, min(column.cy-1, column.cy-irad))
+    x1 = min(self.width, max(column.cx+1, column.cx+irad))
+    y1 = min(self.height, max(column.cy+1, column.cy+irad))
+    #print "neighbors of col(",column.ix,column.iy,") = ",x0,y0,",",x1,y1
     x1 = min(len(self.columnGrid), x1+1) #extra 1 for correct looping
     y1 = min(len(self.columnGrid[0]), y1+1) #extra 1 for correct looping
     
@@ -521,6 +525,8 @@ class Region(object):
     #59.     adaptSegments (segmentUpdateList(c,i), false)
     #60.     segmentUpdateList(c, i).delete()
     self.recentUpdateMap.clear()
+    if not self.temporalLearning:
+      return
     for col in self.columns:
       for cell in col.cells:
         if cell not in self.segmentUpdateMap:
