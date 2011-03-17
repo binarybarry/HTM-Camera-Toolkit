@@ -447,6 +447,10 @@ class CameraWindow(wx.Panel):
     else:
       self._capture = cv.CaptureFromCAM(-1)
     
+    #reset running average accuracy values per Region on new capture
+    for i in xrange(len(self.regionPanels)):
+      self.regionPanels[i].resetRunningAverages()
+    
     #test if we can get frames from the input; error dialog if not
     try:
       frame = cv.QueryFrame(self._capture)
@@ -815,6 +819,9 @@ class RegionParamsPanel(wx.Panel):
     self.regionID = id
     self.region = None
     self._nextRegionParams = None
+    self._sumAccPred = 0.0
+    self._sumAccActive = 0.0
+    self._meanCount = 0
     
     pad = 0 #default some region 1 params slightly different from rest
     if id>1:
@@ -859,8 +866,10 @@ class RegionParamsPanel(wx.Panel):
     inhiRadText = wx.StaticText(panel, label="Inhibition Radius")
     predAccText = wx.StaticText(panel, label="Prediction Accuracy")
     activeAccText = wx.StaticText(panel, label="Activation Accuracy")
-    statusText = wx.StaticText(panel, label="Region Status")
-    blankText = wx.StaticText(panel, label="")
+    predMeanAccText = wx.StaticText(panel, label="Prediction Mean Acc")
+    activeMeanAccText = wx.StaticText(panel, label="Activation Mean Acc")
+#    statusText = wx.StaticText(panel, label="Region Status")
+#    blankText = wx.StaticText(panel, label="")
     
     inputPerColText.SetToolTipString("Percent of input bits within locality radius each Column has potential (proximal) synapses for.")
     minOverlapText.SetToolTipString("Minimum percent of column's proximal synapses that must be active for the column to be considered by the spatial pooler.")
@@ -874,7 +883,9 @@ class RegionParamsPanel(wx.Panel):
     inhiRadText.SetToolTipString("Radius, in Columns, of how far inhibition will take effect per Column (most recent time step).")
     predAccText.SetToolTipString("Correctly predicted active columns out of total sequence-segment predicted columns (most recent time step).")
     activeAccText.SetToolTipString("Correctly predicated active columns out of total active columns (most recent time step).")
-    statusText.SetToolTipString("Current state of the Region.")
+    predMeanAccText.SetToolTipString("Correctly predicted active columns out of total sequence-segment predicted columns (running average).")
+    activeMeanAccText.SetToolTipString("Correctly predicated active columns out of total active columns (running average).")
+#    statusText.SetToolTipString("Current state of the Region.")
     
     self.inputPerColSpin = wx.SpinCtrl(panel, size=(70,-1), style=wx.SP_ARROW_KEYS)
     self.inputPerColSpin.SetValue(15+pad)
@@ -903,8 +914,10 @@ class RegionParamsPanel(wx.Panel):
     self.inhiRadValText = wx.StaticText(panel, label="?")
     self.predAccValText = wx.StaticText(panel, label="0%")
     self.activeAccValText = wx.StaticText(panel, label="0%")
-    self.statusValText = wx.StaticText(panel, label="Not Built")
-    blankValText = wx.StaticText(panel, label="")
+    self.predMeanAccValText = wx.StaticText(panel, label="0%")
+    self.activeMeanAccValText = wx.StaticText(panel, label="0%")
+    #self.statusValText = wx.StaticText(panel, label="Not Built")
+    #blankValText = wx.StaticText(panel, label="")
 
     fgs.AddMany([(inputPerColText, 0, wx.ALIGN_CENTER_VERTICAL), 
                  (self.inputPerColSpin, 0, wx.ALIGN_CENTER_VERTICAL), 
@@ -924,18 +937,16 @@ class RegionParamsPanel(wx.Panel):
                  (self.cellsPerColSpin, 0, wx.ALIGN_CENTER_VERTICAL), 
                  (colYText, 0, wx.ALIGN_CENTER_VERTICAL), 
                  (self.colYSpin, 0, wx.ALIGN_CENTER_VERTICAL),
-                 (blankText, 0, wx.ALIGN_CENTER_VERTICAL), 
-                 (blankValText, 0, wx.ALIGN_CENTER_VERTICAL),  
                  (inhiRadText, 0, wx.ALIGN_CENTER_VERTICAL),
                  (self.inhiRadValText, 0, wx.ALIGN_CENTER_VERTICAL),
                  (predAccText, 0, wx.ALIGN_CENTER_VERTICAL), 
                  (self.predAccValText, 0, wx.ALIGN_CENTER_VERTICAL),
-                 (statusText, 0, wx.ALIGN_CENTER_VERTICAL), 
-                 (self.statusValText, 0, wx.ALIGN_CENTER_VERTICAL),
+                 (predMeanAccText, 0, wx.ALIGN_CENTER_VERTICAL), 
+                 (self.predMeanAccValText, 0, wx.ALIGN_CENTER_VERTICAL),
                  (activeAccText, 0, wx.ALIGN_CENTER_VERTICAL), 
-                 (self.activeAccValText, 0, wx.ALIGN_CENTER_VERTICAL)])
-
-    #fgs.AddGrowableCol(1, 1)
+                 (self.activeAccValText, 0, wx.ALIGN_CENTER_VERTICAL),
+                 (activeMeanAccText, 0, wx.ALIGN_CENTER_VERTICAL), 
+                 (self.activeMeanAccValText, 0, wx.ALIGN_CENTER_VERTICAL)])
 
     hbox.Add(fgs, proportion=1, flag=wx.ALL|wx.EXPAND, border=5)
     panel.SetSizer(hbox)
@@ -968,6 +979,18 @@ class RegionParamsPanel(wx.Panel):
     self.staticBox.SetLabel("Region "+str(rid)+"  (Input="+sizeStr+" from "+src+")")
     self.colXSpin.SetRange(4, self.inputSize[0])
     self.colYSpin.SetRange(4, self.inputSize[1])
+  
+  def resetRunningAverages(self):
+    """ Reset the running average accuracy values for this Region panel. """
+    self._sumAccPred = 0.0
+    self._sumAccActive = 0.0
+    self._meanCount = 0
+    
+    if self.region!=None:
+      nx = len(self.region.columnGrid)
+      ny = len(self.region.columnGrid[0])
+      self.predictedCols = numpy.zeros((nx,ny), dtype=numpy.uint8)
+      self.activeCols = numpy.zeros((nx,ny), dtype=numpy.uint8)
   
   def setNextRegionParams(self, nextRegionParams):
     """ 
@@ -1011,8 +1034,8 @@ class RegionParamsPanel(wx.Panel):
     
     #if region previously created, rebuild if params changed
     self.__checkCreateRegion()
-    if not isOn:
-      self.statusValText.SetLabel("Inactive")
+    #if not isOn:
+    #  self.statusValText.SetLabel("Inactive")
     
     #enable next hierarchical Region's onButton only if this one is on
     self.enableNextRegion(isOn)
@@ -1067,11 +1090,12 @@ class RegionParamsPanel(wx.Panel):
       rebuild = True
     
     if rebuild:
-      self.statusValText.SetLabel("Initializing...")
+      #self.statusValText.SetLabel("Initializing...")
       self.region = Region(self.inputSize, colGridSize, pctInputPerCol, \
                            pctMinOverlap, localityRadius, pctLocalActivity, \
                            cellsPerCol, segActiveThreshold, newSynapseCount)
-      self.statusValText.SetLabel("Active")
+      #self.statusValText.SetLabel("Active")
+      self.resetRunningAverages()
       
       #Recreate the region visualizer if previously open
       if self.regionFrame:
@@ -1096,7 +1120,7 @@ class RegionParamsPanel(wx.Panel):
     if not self.region:
       self.__checkCreateRegion()
     
-    self.statusValText.SetLabel("Active")
+    #self.statusValText.SetLabel("Active")
     
     #Update inputs, learning states, and run the Region
     self.region.updateInput(inputData)
@@ -1132,6 +1156,16 @@ class RegionParamsPanel(wx.Panel):
       pctP = (1.0*numpy.sum(a*p)) / numpy.sum(p)
     if numpy.sum(a)>0:
       pctA = (1.0*numpy.sum(a*p)) / numpy.sum(a)
+    
+    self._meanCount += 1
+    self._sumAccPred += pctP
+    self._sumAccActive += pctA
+    
+    meanPctP = self._sumAccPred / self._meanCount
+    meanPctA = self._sumAccActive / self._meanCount
+    
+    self.predMeanAccValText.SetLabel(SIGF.format(meanPctP*100.0)+"%")
+    self.activeMeanAccValText.SetLabel(SIGF.format(meanPctA*100.0)+"%")
     
     self.predAccValText.SetLabel(SIGF.format(pctP*100.0)+"%")
     self.activeAccValText.SetLabel(SIGF.format(pctA*100.0)+"%")
