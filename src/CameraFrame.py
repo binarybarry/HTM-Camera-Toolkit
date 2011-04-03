@@ -382,7 +382,7 @@ class CameraWindow(wx.Panel):
     in their respective UI panels.
     """
     if self._frameOut:
-      imgMat = numpy.array(list(self._frameOut.getdata()), dtype=numpy.uint8)
+      imgMat = numpy.array(numpy.asarray(self._frameOut, dtype=numpy.uint8))
       imgMat = imgMat.reshape((self._regionShape[1],self._regionShape[0]))
       imgMat = numpy.swapaxes(imgMat, 0, 1)
       imgMat /= 255 #255 for white needs to be 1s instead
@@ -608,12 +608,10 @@ class CameraWindow(wx.Panel):
         self.stopRun()
       return
     
-    #if video file's frame size incorrect, resize to what region expects
+    #if video file's frame size is not 80x60, then assume video is unprocessed
+    #and instead pretend it came from the live camera by doing motion detection
     if frame.width!=self._frame80.width or frame.height!=self._frame80.height:
-      if self._fileImage==None:
-        self._fileImage = cv.CreateImage(self._regionShape, cv.IPL_DEPTH_8U, 3)
-      cv.Resize(frame, self._fileImage)
-      frame = self._fileImage
+      return self.captureFromCamera()
     
     #convert file to gray-scale and build a PIL image from it
     cv.CvtColor(frame, self._frame80, cv.CV_RGB2GRAY)
