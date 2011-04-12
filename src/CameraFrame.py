@@ -34,6 +34,7 @@ import os
 from time import clock
 from PIL import Image, ImageOps, ImageDraw
 from Util import convertToWxImage
+import Util
 from RegionFrame import RegionFrame
 from HTM.Region import Region
 from HTM.Synapse import Synapse
@@ -64,8 +65,13 @@ class CameraFrame(wx.Frame):
     options = wx.Menu()
     self.miShowAll = wx.MenuItem(options, wx.ID_DEFAULT, 'Show Regions 3 and 4', \
                                  'Show Regions 3 and 4', wx.ITEM_CHECK)
+    self.miGenVideo = wx.MenuItem(options, wx.ID_DUPLICATE, 'Generate Example Video File', \
+                                 'Generate Example Video File', wx.ITEM_NORMAL)
     options.AppendItem(self.miShowAll)
+    options.AppendSeparator()
+    options.AppendItem(self.miGenVideo)
     self.Bind(wx.EVT_MENU, self.onShowAll, id=wx.ID_DEFAULT)
+    self.Bind(wx.EVT_MENU, self.onGenVideo, id=wx.ID_DUPLICATE)
     
     help = wx.Menu()
     help.Append(wx.ID_HELP, 'About HTM Camera Toolkit', 'Help actions')
@@ -89,6 +95,14 @@ class CameraFrame(wx.Frame):
     self.cameraWin.showRegions3And4(self.miShowAll.IsChecked())
     size = self.cameraWin.GetBestSize().Get()
     self.SetSize((size[0]+20,size[1]+60))
+    
+  def onGenVideo(self, evt=None):
+    """ Top-level menu Generate Video File was issued by user. """
+    ok = Util.generateVideoClip(self.cameraWin._videoDir)
+    if ok!=None:
+      text = "Example video file \""+ok+"\"successfully created."
+      msg = wx.MessageDialog(self, text, "Status", wx.OK | wx.ICON_INFORMATION)
+      msg.ShowModal()
   
   def onHelp(self, evt=None):
     """ Top-level menu help about command was issued by user. """
@@ -679,8 +693,7 @@ class CameraWindow(wx.Panel):
       
       frameOut = image.resize(self._regionShape)
       if self._videoWriter:
-        cvImage = cv.CreateImageHeader(frameOut.size, cv.IPL_DEPTH_8U, 1)
-        cv.SetData(cvImage, frameOut.tostring())
+        cvImage = Util.convertPILToCV(frameOut)
         cv.WriteFrame(self._videoWriter, cvImage)
     
     return frameOut
