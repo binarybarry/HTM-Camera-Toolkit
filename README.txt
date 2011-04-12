@@ -2,13 +2,13 @@ The HTM Camera Toolkit is a research application that allows easy experimentatio
 
 I haven't set up any formal installers as of yet.  So to run the toolkit you will need the following installed:
 
-Python 2.7 (or 2.6)
+Python 2.6 (or 2.7)
 wxPython 2.8
 Python Imaging Library (PIL) 1.1.7
 Numpy 1.5.1
-OpenCV 2.2 (or 2.1 if using Python 2.6)
+OpenCV 2.1 (or 2.2 if using Python 2.7)
 
-You get download them from their websites, respectively:
+You can download them from their websites, respectively:
 
 http://www.python.org/download/
 http://www.wxpython.org/download.php
@@ -22,6 +22,8 @@ Once you have all of the above installed with proper PATH and PYTHONPATH environ
 
 python CameraToolkit.py
 
+More detailed information is also posted on the Numenta HTM Theory forum:
+http://www.numenta.com/phpBB2/viewtopic.php?t=1419
 
 
 Additional background:
