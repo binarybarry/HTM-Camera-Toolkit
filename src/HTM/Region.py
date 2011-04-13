@@ -117,8 +117,8 @@ class Region(object):
     self.spatialLearning = False
     self.temporalLearning = False
     
-    #Reduce the number of columns and map centers of input x,y correctly
-    #For now: column grid will be half-lengths of input grid in both dimensions
+    #Reduce the number of columns and map centers of input x,y correctly.
+    #column grid will be relative to size of input grid in both dimensions
     self.width = colGridSize[0]
     self.height = colGridSize[1]
     self.xSpace = (self.inputWidth-1*1.0) / (self.width-1)
@@ -135,8 +135,14 @@ class Region(object):
         yCols.append(col)
         self.columns.append(col)
       self.columnGrid.append(yCols)
-      
-    self.outData = numpy.zeros((len(self.columnGrid), len(self.columnGrid[0])), dtype=numpy.uint8)
+    
+    #size the output array as double grid for 4-cell, else just pad the first
+    #array dimension for 2 or 3 cell (and same size if just 1-cell)
+    if cellsPerCol==4:
+      outShape = (len(self.columnGrid)*2, len(self.columnGrid[0])*2)
+    else:
+      outShape = (len(self.columnGrid)*cellsPerCol, len(self.columnGrid[0]))
+    self.outData = numpy.zeros(outShape, dtype=numpy.uint8)
     
     #segmentUpdateList A list of segmentUpdate structures. segmentUpdateList(c,i)
     #   is the list of changes for cell i in column c.
@@ -199,13 +205,14 @@ class Region(object):
     
     if DEBUG:
       print "\nRegion Created"
-      print "columnGrid = ",self.outData.shape
+      print "columnGrid = ",colGridSize
       print "xSpace, ySpace = ",self.xSpace, self.ySpace
       print "inputRadius = ",inputRadius
       print "desiredLocalActivity = ", self.desiredLocalActivity
       print "synapsesPerProximalSegment = ", synapsesPerSegment
       print "minOverlap = ",self.minOverlap
       print "conPerm,permInc = ", Synapse.CONNECTED_PERM, Synapse.PERMANENCE_INC
+      print "outputGrid = ",self.outData.shape
   
   def runOnce(self):
     """
@@ -235,26 +242,34 @@ class Region(object):
     """ 
     Determine the output bit-matrix of the most recently run time step
     for this Region.  The Region output is a 2d numpy array representing all
-    Columns present in the Region.  Bits are set to 1 if a Column is active or
-    it contains at least 1 predicting cell, all other bits are 0. The output data
-    will be a 2d numpy array of dimensions corresponding the column grid
-    for this Region.  (Note: the Numenta doc suggests the Region output
-    should potentially include bits for each individual cell.  My first-pass 
-    implementation is Column only for now since in the case or 2 or 3 cells, the
-    spatial positioning of the original grid shape can become lost and I'm
-    not sure yet how desirable this is or isn't for the case of video input).
-    @return a 2d numpy array of same shape as the column grid containing the
-    Region's collective output.
+    Cells present in the Region.  Bits are set to 1 if a Cell is active or
+    predicting, all other bits are 0.  The output data will be a 2d numpy
+    array of dimensions based on both the size of the column gird for this 
+    Region and how many cells per column are present.  If 1 cell per column
+    the output array is the same shape as the column grid.  For 2 or 3 cells
+    per column the output array's first dimension is multiplied by the number
+    of cells (i.e. if the column grid is 40x30, then 2 cells would result in
+    80x30 output grid, and 3 cells would yield a 120x30).  For 4 cells the
+    output grid is double the dimension of the column grid (40x30 becomes
+    80x60 on output).
+    @return a 2d numpy array of containing the Region's collective output
+    (the shape will be based on column grid and cells per column).
     """
-    for col in self.columns:
-      if col.isActive:
-        self.outData[col.cx][col.cy] = 1
-      else:
-        self.outData[col.cx][col.cy] = 0
+    if self.cellsPerCol < 4:
+      for col in self.columns:
         for cell in col.cells:
-          if cell.isPredicting:
-            self.outData[col.cx][col.cy] = 1
-            break
+          cx = (col.cx*self.cellsPerCol) + cell.index
+          self.outData[cx][col.cy] = 0
+          if cell.isActive or cell.isPredicting:
+            self.outData[cx][col.cy] = 1
+    else:
+      for col in self.columns:
+        for cell in col.cells:
+          cx = (col.cx*2) + (cell.index%2)
+          cy = (col.cy*2) + (cell.index/2)
+          self.outData[cx][cy] = 0
+          if cell.isActive or cell.isPredicting:
+            self.outData[cx][cy] = 1
     return self.outData
   
   def __performSpatialPooling(self):

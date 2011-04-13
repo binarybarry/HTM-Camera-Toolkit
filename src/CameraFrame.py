@@ -1028,7 +1028,10 @@ class RegionParamsPanel(wx.Panel):
         self._nextRegionParams.regionOnRun()
       else:
         regionOn = self.onButton.GetValue()
-        self._nextRegionParams.inputSize = (self.colXSpin.GetValue(), self.colYSpin.GetValue())
+        if self.region==None:
+          self._nextRegionParams.inputSize = (self.colXSpin.GetValue(), self.colYSpin.GetValue())
+        else:
+          self._nextRegionParams.inputSize = self.region.outData.shape
         self._nextRegionParams.__refreshInputSize()
         self._nextRegionParams.onButton.Enable(regionOn)
         self._nextRegionParams.enableNextRegion(enable)
