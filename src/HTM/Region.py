@@ -54,7 +54,7 @@ from math import exp, sqrt, ceil
 from HTM.Column import Column
 from HTM.Synapse import Synapse
 
-RAD_BIAS_PEAK = 2 #input-bit radius bias peak for default proximal perms
+RAD_BIAS_PEAK = 0.8 #input-bit radius bias peak for default proximal perms
 RAD_BIAS_STD_DEV = 0.25 #input-bit radius standard deviation bias
 DEBUG = True
 
@@ -130,7 +130,7 @@ class Region(object):
     for cx in xrange(self.width):
       yCols = []
       for cy in xrange(self.height):
-        srcPos = (int(cx*self.xSpace), int(cy*self.ySpace))
+        srcPos = (int(round(cx*self.xSpace)), int(round(cy*self.ySpace)))
         col = Column(self, srcPos, (cx,cy))
         yCols.append(col)
         self.columns.append(col)
@@ -184,7 +184,8 @@ class Region(object):
           allPos.append((x,y))
       for rx,ry in random.sample(allPos, synapsesPerSegment):
         inputCell = InputCell(rx, ry, self.inputData)
-        permanence = random.gauss(Synapse.CONNECTED_PERM, Synapse.PERMANENCE_INC*2)
+        permanence = random.gauss(Synapse.CONNECTED_PERM, Synapse.PERMANENCE_INC)
+        permanence = max(0.0, permanence) #ensure minimum of zero to clamp edge cases
         distance = sqrt((col.ix-rx)**2 + (col.iy-ry)**2)
         localityBias = (RAD_BIAS_PEAK/0.4)*exp((distance/(longerSide*RAD_BIAS_STD_DEV))**2/-2)
         syn = Synapse(inputCell, permanence*localityBias)

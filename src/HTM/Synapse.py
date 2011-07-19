@@ -28,7 +28,7 @@ class Synapse(object):
     @param permanence: the synapses's initial permanence value (0.0-1.0).
     """
     self.inputSource = inputSource
-    self.permanence = permanence
+    self.permanence = min(1.0, permanence) #clamp permanence to 1.0
     
   @property
   def isConnected(self):
