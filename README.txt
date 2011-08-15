@@ -22,7 +22,7 @@ I have only tested on Win7-64 and Vista-32 however all the code libraries used a
 
 The HMAX toolkit uses native c++ libraries for performance reasons.  Currently I only include pre-built libraries for win32.  You will need to recompile if desired to run on other platforms.  To do this you will need gcc/mingw and SWIG installed (I use 2.0.4) and then run setup.py to compile. You will also need to compile/build the LIBSVM 3rd party library.
 
-Once you have all of the above installed with proper PATH and PYTHONPATH environment variables set up, you can run the toolkit from a command-line:
+Once you have all of the above installed with proper PATH and PYTHONPATH environment variables set up (i.e. make sure your python installation is on the PYTHONPATH and python/OpenCV/libsvm.dll are on the PATH), you can run the toolkit from a command-line:
 
 python CameraToolkit.py
 or
