@@ -137,6 +137,9 @@ class LayerC(_object):
     def getXRFDist(self, *args): return _hmaxc.LayerC_getXRFDist(self, *args)
     def getYRFDist(self, *args): return _hmaxc.LayerC_getYRFDist(self, *args)
     def RFDist(self, *args): return _hmaxc.LayerC_RFDist(self, *args)
+    def getXRFNear(self, *args): return _hmaxc.LayerC_getXRFNear(self, *args)
+    def getYRFNear(self, *args): return _hmaxc.LayerC_getYRFNear(self, *args)
+    def RFNear(self, *args): return _hmaxc.LayerC_RFNear(self, *args)
     def setValue(self, *args): return _hmaxc.LayerC_setValue(self, *args)
     def getValue(self, *args): return _hmaxc.LayerC_getValue(self, *args)
     def getLayerData(self, *args): return _hmaxc.LayerC_getLayerData(self, *args)
@@ -177,6 +180,22 @@ class MaxFilterC(_object):
     def computeLayer(self, *args): return _hmaxc.MaxFilterC_computeLayer(self, *args)
 MaxFilterC_swigregister = _hmaxc.MaxFilterC_swigregister
 MaxFilterC_swigregister(MaxFilterC)
+
+class GRBFFilterC(_object):
+    __swig_setmethods__ = {}
+    __setattr__ = lambda self, name, value: _swig_setattr(self, GRBFFilterC, name, value)
+    __swig_getmethods__ = {}
+    __getattr__ = lambda self, name: _swig_getattr(self, GRBFFilterC, name)
+    __repr__ = _swig_repr
+    def __init__(self, *args): 
+        this = _hmaxc.new_GRBFFilterC(*args)
+        try: self.this.append(this)
+        except: self.this = this
+    __swig_destroy__ = _hmaxc.delete_GRBFFilterC
+    __del__ = lambda self : None;
+    def computeLayer(self, *args): return _hmaxc.GRBFFilterC_computeLayer(self, *args)
+GRBFFilterC_swigregister = _hmaxc.GRBFFilterC_swigregister
+GRBFFilterC_swigregister(GRBFFilterC)
 
 # This file is compatible with both classic and new-style classes.
 
