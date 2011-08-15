@@ -1,12 +1,14 @@
 The HTM Camera Toolkit is a research application that allows easy experimentation of Numenta's Hierarchical Temporal Memory (HTM) algorithms using real world video input from a camera/webcam.
 
+Also included in this project is my HMAX Camera Toolkit.  This is another research application that implements the HMAX computer vision algorithm.  This toolkit allows training multiple classes of objects using video input and later classifying subsequent video input frames as one of the several trained classes.
+
 I haven't set up any formal installers as of yet.  So to run the toolkit you will need the following installed:
 
-Python 2.6 (or 2.7)
+Python 2.6
 wxPython 2.8
 Python Imaging Library (PIL) 1.1.7
 Numpy 1.5.1
-OpenCV 2.1 (or 2.2 if using Python 2.7)
+OpenCV 2.1
 
 You can download them from their websites, respectively:
 
@@ -18,12 +20,20 @@ http://opencv.willowgarage.com/wiki/
 
 I have only tested on Win7-64 and Vista-32 however all the code libraries used are available for Mac and Linux as well so there are good odds it will also run on those platforms.
 
+The HMAX toolkit uses native c++ libraries for performance reasons.  Currently I only include pre-built libraries for win32.  You will need to recompile if desired to run on other platforms.  To do this you will need gcc/mingw and SWIG installed (I use 2.0.4) and then run setup.py to compile. You will also need to compile/build the LIBSVM 3rd party library.
+
 Once you have all of the above installed with proper PATH and PYTHONPATH environment variables set up, you can run the toolkit from a command-line:
 
 python CameraToolkit.py
+or
+python HMAXToolkit.py
 
 More detailed information is also posted on the Numenta HTM Theory forum:
 http://www.numenta.com/phpBB2/viewtopic.php?t=1419
+
+For HMAX, I am primarily referencing this paper:
+Jim Mutch and David G. Lowe "Object class recognition and localization using sparse features with limited receptive fields" 2008.
+Found at: http://www.cs.ubc.ca/~lowe/papers/08mutch.pdf
 
 
 Additional background:

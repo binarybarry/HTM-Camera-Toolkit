@@ -1,11 +1,20 @@
 """
 Created on May 18, 2011
 
-@author: barry
+@author: Barry Maturkanich
+
+This file contains the definition of a single hierarchical level
+within an HMAX network.
+
+In an HMAX Network a Level is defined as a set of Layers 
+(one per scale) as well as a single LevelFilter that defines rules
+for processing input from previous level layers to produce the
+data in the layers of the current level.
 """
 
 import numpy
 import Util
+import HMAX
 from PIL import Image
 
 class Level(object):
@@ -24,13 +33,6 @@ class Level(object):
     @param filter: an object derived from LevelFilter that determines
     how layers in this level are to be calculated from layers in the
     previous level.
-    @param layers: the set of scale layers that will define this level.
-    @param inputLayerIDs: numpy array of previous layer relative indicies to use
-    as input to the layers in this level.  The default is 0 only which means
-    when calculating a layer in this level, take the layerID and +0 to it
-    and use that layerID from the previous level as input.  If instead the
-    inputLayerIDs were [0,1] then when calculating layer x in this level use
-    layers x+0 and x+1 from the previous level as input to the filter.
     """
     self.name = name
     self.filter = filter
@@ -50,14 +52,23 @@ class Level(object):
     return self.name+" ("+str(self.index)+")"
   
   def setLayers(self, layers):
+    """
+    Assign the data layers used within this level.
+    @param layers: the set of scale layers that will define this level.
+    """
     self.layers = layers
-    #Debug
-    print "\n"+self.name
-    for layer in self.layers:
-      print layer
+    if HMAX.DEBUG:#Debug
+      print "\n"+self.name
+      for layer in self.layers:
+        print layer
   
   def getMaxLayerValue(self):
-    """ doc """
+    """ 
+    Loop over all cells within all layers in this level and return
+    the maximum value found.  This value is helpful when rendering
+    layer data into an image as in this case we best want to know
+    how to map the range of layer values into the 0-255 pixel range.
+    """
     mx = 0.0
     for layer in self.layers:
       for f in xrange(layer.fSize):
@@ -75,22 +86,30 @@ class Level(object):
     for each layer.  The layerInputs are assumed to already have been
     computed by the previous level in the hierarchy.
     """
-    #print "inferring "+self.name+"..."
     for layer in self.layers:
       self.filter.computeLayer(layer)
-    
-    #TODO: create GaborFilterC.py for python interface into hmaxc.GaborFilterC
   
 
 class ImageLevel(Level):
-  """ doc """
+  """ 
+  An ImageLevel is a subclassed level that behaves slightly different
+  in its computeLevel method.  In the case of images (level 0) we need to
+  read from a raw image input source which does not map to any other
+  input layers (of course not because it is the bottom-most layer).
+  """
   
   def __init__(self, network, name, index, filter):
     Level.__init__(self, network, name, index, filter)
     
   def computeLevel(self, inputImage):
     """
-    doc
+    Compute the results for all layers associated with this level.
+    In the case of the ImageLevel we must read our inputs from an
+    outside source (the image specified by the inputImage parameter).
+    In this case our level simply converts the PIL input image into
+    a numpy array stored in the layers.  The first layer contains
+    the exact image (100% scale) which subsequent layers store
+    scaled-down versions of the input image.
     """
     assert inputImage.size==(self.layers[0].xSize, self.layers[0].ySize)
     self.layers[0].setLayerData(Util.convertPILtoNumpy(inputImage, False))

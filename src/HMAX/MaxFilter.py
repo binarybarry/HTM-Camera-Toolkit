@@ -1,8 +1,18 @@
-'''
+"""
 Created on May 3, 2011
 
-@author: barry
-'''
+@author: Barry Maturkanich
+
+Implementation of the Max Filter (C1) used by the HMAX algorithm.
+The Max Filter is designed to take as input a set of 2 layers
+that were last processed with the S1 Gabor filter.
+
+The filter will simply examine all the Gabor results for a given
+layer position and select the maximum Gabor response present across
+the 2 layer size scales.  Thus we are condensing 2 size scales (2 layers)
+into 1 by only keeping the stronger of the 2 Gabor responses for each
+orientation.
+"""
 
 import hmaxc
 from HMAX.LevelFilter import LevelFilter
@@ -23,8 +33,13 @@ class MaxFilter(LevelFilter):
     self.xyCount = xyCount
     
   def computeUnit(self, layerInputs, pos, f):
-    """ 
-    @param layerInputs: assume this is tuple of sCount inputLayers.
+    """
+    Run the Filter on the input data from the previous network layer
+    at the specified position. The result value will be returned and is
+    expected to then be stored in the current output network layer.
+    @param layerInputs: list of layer inputs this filter will read from.
+    @param pos: coordinate position in real-valued space.
+    @param f: layer feature index
     """
     #Re-express YXCOUNT as a distance in real-valued retinal coordinates.
     xr = layerInputs[0].xySpace[0] * 0.5 * self.xyCount
@@ -47,6 +62,9 @@ class MaxFilter(LevelFilter):
   
   def getInputBoundBox(self, layer, rbbox):
     """
+    Determine the pixel bounding box corresponding to the input retinal-space
+    bounding box.  This method is primarily used to generate feedback used
+    in the UI to render input sources for higher layer results.
     @param layerInput: the layer the filter will read input values from.
     @param rbbox: the retinal bound box within the current layer.
     @return tuple (x,y, w,h) bounding box pixel coordinates.

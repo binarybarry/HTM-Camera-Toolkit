@@ -1,11 +1,23 @@
-'''
+"""
 Created on May 23, 2011
 
 @author: barry
-'''
 
-"""
-setup.py file for SWIG example
+setup.py file for SWIG.
+
+This file identifies C++ files that we wish to compile and
+will run swig to create a python library containing the
+compiled native code as well as a wrapper file so python
+knows how to properly call into it.
+
+On win32 you will need mingw32 installed and on the PATH.
+To run (on win32) type the following on command line:
+
+python setup.py build -c mingw32
+
+Linux probably does not need the "-c mingw32".  
+I assume it will default to using whichever gcc is on the 
+PATH; most likely this will be fine.
 """
 
 import os
@@ -14,15 +26,16 @@ from distutils.core import setup, Extension
 
 shutil.rmtree("build", ignore_errors=True)
 
-cDir = ".."+os.sep+".."+os.sep+"hmin"+os.sep+"CLA"+os.sep
+cDir = "HMAX"+os.sep+"cpp"+os.sep
 example_module = Extension('_hmaxc', [cDir+'LayerC.cpp',
                                       cDir+'GaborFilterC.cpp', 
                                       cDir+'MaxFilterC.cpp',
+                                      cDir+'GRBFFilterC.cpp',
                                       cDir+'hmaxc.i'],
                            swig_opts=['-c++'])#, '-I../include'])
 
 setup (name = 'hmaxc',
-       version = '0.1',
+       version = '1.0',
        author      = "Barry",
        description = """HMAX C++ Library.""",
        ext_modules = [example_module]

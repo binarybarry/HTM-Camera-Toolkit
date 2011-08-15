@@ -1,7 +1,32 @@
 """
 Created on May 11, 2011
 
-@author: barry
+@author: Barry Maturkanich
+
+The NetworkFrame contains all the top-level UI to allow users to
+define HMAX Networks and then visualize the states of each of its
+layers to understand what the Network is coming up with and why.
+
+The HMAX Network is trained using static images however the UI is
+set up to allow playing video files and presenting each individual
+video frame to the network.
+
+Once you click to create an HMAX Network the first step is to perform
+learning for the S2 level.  This level is interested in learned small
+4x4 "patches" of cells within its layers.  By the time data gets to S2
+it has been approximated as lines of various orientations.  S2 then
+learns a set of these line-orientation patches.  Layer S2 will try
+to then later describe entire images in terms of these learned patches.
+
+Once S2 is trained, we then need to train C2 which ultimately is an SVM
+(Support Vector Machine).  C2 looks at how closely all parts of the 
+input image match each of the learned S2 patches.  It then passes these
+results to its SVM along with a class label (which is toggled in the UI 
+during training).
+
+Once C2 is trained, we can perform inference on new images.  C2 will use
+its trained SVM to estimate which class of image the input image is
+most closely associated with.
 """
 
 import wx
@@ -12,7 +37,9 @@ from time import clock
 from PIL import Image, ImageOps, ImageDraw
 from Util import convertToWxImage
 import Util
+from HMAX.Layer import Layer
 from HMAX.Network import Network
+from HMAX.GRBFFilter import GRBFFilter
 
 SIGF0 = "{0:.0f}" #0 significant digits float string format code
 SIGF2 = "{0:.2f}" #2 significant digits float string format code
@@ -22,7 +49,6 @@ class NetworkFrame(wx.Frame):
   The main HMAX Toolkit wxFrame window.  We include the main menu bar and 
   attach the NetworkWindow panel which contains all the real UI.
   """
-
 
   def __init__(self, parent=None):
     """
@@ -40,10 +66,10 @@ class NetworkFrame(wx.Frame):
     self.Bind(wx.EVT_MENU, self.onExit, id=wx.ID_EXIT)
     
     options = wx.Menu()
-    self.miShowAll = wx.MenuItem(options, wx.ID_DEFAULT, 'Show Regions 3 and 4', \
-                                 'Show Regions 3 and 4', wx.ITEM_CHECK)
-    options.AppendItem(self.miShowAll)
-    self.Bind(wx.EVT_MENU, self.onShowAll, id=wx.ID_DEFAULT)
+    self.miDetect = wx.MenuItem(options, wx.ID_DEFAULT, 'Perform Motion Detection', \
+                                 'Perform Motion Detection', wx.ITEM_CHECK)
+    options.AppendItem(self.miDetect)
+    self.Bind(wx.EVT_MENU, self.onMotionDetect, id=wx.ID_DEFAULT)
     
     help = wx.Menu()
     help.Append(wx.ID_HELP, 'About HMAX Camera Toolkit', 'Help actions')
@@ -62,22 +88,24 @@ class NetworkFrame(wx.Frame):
     """ Top-level menu exit command was issued by user. """
     exit()
   
-  def onShowAll(self, evt=None):
-    """ Top-level menu Show Regions 3 and 4 was issued by user. """
-    self.networkWin.showRegions3And4(self.miShowAll.IsChecked())
-    size = self.cameraWin.GetBestSize().Get()
-    self.SetSize((size[0]+20,size[1]+60))
+  def onMotionDetect(self, evt=None):
+    """ Top-level menu Perform Motion Detection was toggled """
+    self.networkWin._motionDetect = self.miDetect.IsChecked()
   
   def onHelp(self, evt=None):
     """ Top-level menu help about command was issued by user. """
-    text = "HMAX Camera Toolkit 1.0 by Barry Maturkanich (binarybarry@gmail.com).\n\n" + \
+    text = "HMAX Camera Toolkit v1.0 (Aug-14-11) by Barry Maturkanich " + \
+          "(binarybarry@gmail.com).\n\n" + \
            "The HMAX (Hierarchical Model and X) Network learning algorithm "+ \
-           "is a computer vision algorithm inspired by research of the ventral 'what'"+ \
-           "pathway of the neocortex in the mammalian brain.  All "+ \
+           "is a computer vision algorithm inspired by research of the ventral "+ \
+           "'what' pathway of the neocortex in the mammalian brain.  All "+ \
            "code used in this application is my personal implementation of the HMAX "+ \
-           "network algorithm as published in several recent academic research papers."+ \
+           "network algorithm based on published techniques from several recent "+ \
+           "academic research papers.\n\nMost notably cited is the paper by Jim Mutch "+ \
+           "and David G. Lowe \"Object class recognition and localization using "+ \
+           "sparse features with limited receptive fields\" 2008."+ \
            "\n\nThe toolkit also uses code from several other open-source projects "+ \
-           "including the Python Imaging Library, Numpy, wxPython, and OpenCV."
+           "including the Python Imaging Library, Numpy, wxPython, OpenCV, and LIBSVM."
     msg = wx.MessageDialog(self, text, "About HMAX Camera Toolkit", wx.OK | wx.ICON_INFORMATION)
     msg.ShowModal()
     
@@ -100,26 +128,27 @@ class NetworkWindow(wx.Panel):
     self._videoDir = os.getcwd()+os.sep+"video"+os.sep
     self._lastFrameTime = clock()
     self._secPerFrame = 1.0 / 15.0
-    self._regionShape = (80,60)
+    self._networkSize = (80,60)
     self._lastImageClick = None
+    self._motionDetect = False
     
     self._prevImage = None
     self._normalImage = None
     
-    self._imgSize = (320,240)
-    self._inputImage = cv.CreateImage(self._imgSize, cv.IPL_DEPTH_8U, 1 )
-    self._diffImage = cv.CreateImage(self._imgSize, cv.IPL_DEPTH_8U, 1)
-    self._prevIplImage = cv.CreateImage(self._imgSize, cv.IPL_DEPTH_8U, 1)
-    self._threshImage = cv.CreateImage(self._imgSize, cv.IPL_DEPTH_8U, 1)
-    self._motionImage = Image.new('L', self._imgSize)
+    canvasSize = Layer.canvasSize
+    self._inputImageNet = cv.CreateImage(self._networkSize, cv.IPL_DEPTH_8U, 1 )
+    self._inputImage = cv.CreateImage(canvasSize, cv.IPL_DEPTH_8U, 1 )
+    self._diffImage = cv.CreateImage(canvasSize, cv.IPL_DEPTH_8U, 1)
+    self._prevIplImage = cv.CreateImage(canvasSize, cv.IPL_DEPTH_8U, 1)
+    self._threshImage = cv.CreateImage(canvasSize, cv.IPL_DEPTH_8U, 1)
+    self._motionImage = Image.new('L', canvasSize)
     
-    self._historyImage = cv.CreateImage(self._imgSize, cv.IPL_DEPTH_32F, 1 )
-    self._segMaskImage = cv.CreateImage(self._imgSize, cv.IPL_DEPTH_32F, 1 )
+    self._historyImage = cv.CreateImage(canvasSize, cv.IPL_DEPTH_32F, 1 )
+    self._segMaskImage = cv.CreateImage(canvasSize, cv.IPL_DEPTH_32F, 1 )
     self._memStorage = cv.CreateMemStorage()
     
-    self._camImage = None
+    self._frameImage = None
     self._fileImage = None
-    self._frame80 = cv.CreateImage(self._regionShape, cv.IPL_DEPTH_8U, 1 )
     
     imgDir = "images"+os.sep
     playImg = Image.open(imgDir+"play_36_26.png")
@@ -148,7 +177,7 @@ class NetworkWindow(wx.Panel):
     #set UI controls
     inputBox = wx.StaticBoxSizer(wx.StaticBox(self, -1, "Video Input Control"), \
                                  orient=wx.VERTICAL)
-    inputBox.SetMinSize((self._imgSize[0]+14, -1))
+    inputBox.SetMinSize((canvasSize[0]+14, -1))
     
     camPanel = wx.Panel(self, -1)
     hSizerCam = wx.BoxSizer(wx.HORIZONTAL)
@@ -244,9 +273,11 @@ class NetworkWindow(wx.Panel):
     self.numScalesSpin = wx.SpinCtrl(createPanel, size=(70,-1), style=wx.SP_ARROW_KEYS)
     self.numScalesSpin.SetRange(2, 12)
     self.numScalesSpin.SetValue(2)
+    self.numScalesSpin.SetToolTipString("(Fixed at 2 scales until future release)")
+    self.numScalesSpin.Disable()
     self.numThetasSpin = wx.SpinCtrl(createPanel, size=(70,-1), style=wx.SP_ARROW_KEYS)
     self.numThetasSpin.SetRange(1, 12)
-    self.numThetasSpin.SetValue(4)
+    self.numThetasSpin.SetValue(8)
     
     fgsCreate.AddMany([(numScalesText, 0, wx.ALIGN_CENTER_VERTICAL), 
                      (self.numScalesSpin, 0, wx.ALIGN_CENTER_VERTICAL),
@@ -264,10 +295,12 @@ class NetworkWindow(wx.Panel):
     scaleText = wx.StaticText(self, label="Scale")
     thetaText = wx.StaticText(self, label="Theta")
     c1TypeText = wx.StaticText(self, label="Render")
+    c2TypeText = wx.StaticText(self, label="Results")
     
-    scaleText.SetToolTipString("Select image scales to view below.")
-    thetaText.SetToolTipString("Select theta angle to view below.")
-    c1TypeText.SetToolTipString("Select data to render in C1/S2.")
+    scaleText.SetToolTipString("Select image scales to view below.\n(Fixed at 2 scales until future release)")
+    thetaText.SetToolTipString("Select gabor theta angle to view below.")
+    c1TypeText.SetToolTipString("Render all C1 orientations or only those representing last clicked S2 cell.")
+    c2TypeText.SetToolTipString("In the last canvas render either S2 results or C2 results.")
     
     self.scaleCombo = wx.ComboBox(self, -1, size=(110,-1), style=wx.CB_READONLY)
     self.thetaCombo = wx.ComboBox(self, -1, size=(110,-1), style=wx.CB_READONLY)
@@ -278,9 +311,15 @@ class NetworkWindow(wx.Panel):
     
     self.c1TypeCombo = wx.ComboBox(self, -1, size=(110,-1), style=wx.CB_READONLY)
     self.c1TypeCombo.Bind(wx.EVT_COMBOBOX, self.displayComboRun)
-    self.c1TypeCombo.SetItems(["S2 Selection", "C1 Composite", "S2 Composite", "S2 Match"])
-    self.c1TypeCombo.Select(0)
+    self.c1TypeCombo.SetItems(["S2 Selection", "C1 Composite"])
+    self.c1TypeCombo.Select(1)
     self.c1TypeCombo.Disable()
+    
+    self.c2TypeCombo = wx.ComboBox(self, -1, size=(110,-1), style=wx.CB_READONLY)
+    self.c2TypeCombo.Bind(wx.EVT_COMBOBOX, self.displayComboRun)
+    self.c2TypeCombo.SetItems(["S2 Results", "C2 Results"])
+    self.c2TypeCombo.Select(0)
+    self.c2TypeCombo.Disable()
     
     fgsParam = wx.FlexGridSizer(3, 2, 5, 5)
     fgsParam.AddMany([(scaleText, 0, wx.ALIGN_CENTER_VERTICAL), 
@@ -288,7 +327,9 @@ class NetworkWindow(wx.Panel):
                      (thetaText, 0, wx.ALIGN_CENTER_VERTICAL), 
                      (self.thetaCombo, 0, wx.ALIGN_CENTER_VERTICAL),
                      (c1TypeText, 0, wx.ALIGN_CENTER_VERTICAL), 
-                     (self.c1TypeCombo, 0, wx.ALIGN_CENTER_VERTICAL)])
+                     (self.c1TypeCombo, 0, wx.ALIGN_CENTER_VERTICAL),
+                     (c2TypeText, 0, wx.ALIGN_CENTER_VERTICAL), 
+                     (self.c2TypeCombo, 0, wx.ALIGN_CENTER_VERTICAL)])
     paramBox.Add(fgsParam, 0, flag=wx.ALL|wx.EXPAND, border=5)
     
     #S2 learning parameters options
@@ -298,24 +339,28 @@ class NetworkWindow(wx.Panel):
     fgsS2Panel = wx.FlexGridSizer(2, 2, 5, 5) #rows, cols, vgap, hgap
     
     self.resetS2Button = wx.Button(learnS2Panel, 0, "Reset")
-    self.resetS2Button.SetToolTipString("Reset Learning for S2.")
+    self.resetS2Button.SetToolTipString("Reset all learning for S2 (and C2).")
     self.resetS2Button.Bind(wx.EVT_BUTTON, self.resetS2Run)
     
     self.learnS2Button = wx.CheckBox(learnS2Panel, 0, "Learning")
     self.learnS2Button.SetToolTipString("Enable Learning for S2.")
-    self.learnS2Button.Bind(wx.EVT_CHECKBOX, self.learnC2Run)
+    self.learnS2Button.Bind(wx.EVT_CHECKBOX, self.learnS2Run)
+    self.learnS2Button.Disable()
     
     maxPatchText = wx.StaticText(learnS2Panel, label="Max Patches")
+    maxPatchText.SetToolTipString("Maximum number of S2 spatial patches to learn. Must decide before creating network.")
     self.maxPatchSpin = wx.SpinCtrl(learnS2Panel, size=(70,-1), style=wx.SP_ARROW_KEYS)
     self.maxPatchSpin.SetRange(1, 200)
     self.maxPatchSpin.SetValue(50)
     
     similarText = wx.StaticText(learnS2Panel, label="Max Similarity")
+    similarText.SetToolTipString("If patches are more than this % similar they are considered equivalent during learning.")
     self.similarSpin = wx.SpinCtrl(learnS2Panel, size=(70,-1), style=wx.SP_ARROW_KEYS)
     self.similarSpin.SetRange(1, 100)
-    self.similarSpin.SetValue(80)
+    self.similarSpin.SetValue(90)
     
     patchesText = wx.StaticText(learnS2Panel, label="# Patches")
+    patchesText.SetToolTipString("Number of S2 patches learned so far.")
     self.numPatchText = wx.StaticText(learnS2Panel, label="0")
     
     fgsS2Panel.AddMany([(self.learnS2Button, 0, wx.ALIGN_CENTER_VERTICAL), 
@@ -331,7 +376,7 @@ class NetworkWindow(wx.Panel):
     learnS2Box.Add(learnS2Panel, 0, flag=wx.ALL|wx.EXPAND, border=5)
 
     #C2 learning parameters options
-    learnC2Box = wx.StaticBoxSizer(wx.StaticBox(self, -1, "C2 Learning"), \
+    learnC2Box = wx.StaticBoxSizer(wx.StaticBox(self, -1, "C2 SVM Learning"), \
                                    orient=wx.VERTICAL)
     c2Panel = wx.Panel(self)
     fgsC2 = wx.FlexGridSizer(1, 2, 5, 5) #rows, cols, vgap, hgap
@@ -339,6 +384,7 @@ class NetworkWindow(wx.Panel):
     self.learnC2Button = wx.CheckBox(c2Panel, 0, "Learning: class")
     self.learnC2Button.SetToolTipString("Learn a class for C2.")
     self.learnC2Button.Bind(wx.EVT_CHECKBOX, self.learnC2Run)
+    self.learnC2Button.Disable()
     
     self.learnC2Spin = wx.SpinCtrl(c2Panel, size=(55,-1), style=wx.SP_ARROW_KEYS)
     self.learnC2Spin.SetRange(1, 10)
@@ -348,46 +394,50 @@ class NetworkWindow(wx.Panel):
                      (self.learnC2Spin, 0, wx.ALIGN_CENTER_VERTICAL)])
     c2Panel.SetSizer(fgsC2)
     
-    classText = wx.StaticText(self, label="x learned for class 1")
-    resultText = wx.StaticText(self, label="Inference: 56.4% class 1")
-    classText.SetToolTipString("Number of examples learned for SVM classes.")
-    resultText.SetToolTipString("Last calculated SVM inference results.")
+    self.classLabel = wx.StaticText(self, label="0 learned for class 1")
+    self.allClassLabel = wx.StaticText(self, label="0 learned across 0 classes")
+    self.classLabel.SetToolTipString("Number of examples learned for SVM classes.")
+    
+    self.finishC2Button = wx.Button(self, 0, "Finish Learning")
+    self.finishC2Button.SetToolTipString("Finalize Learning for C2.")
+    self.finishC2Button.Bind(wx.EVT_BUTTON, self.finishC2Run)
+    self.finishC2Button.Disable()
     
     learnC2Box.Add(c2Panel, 0, flag=wx.ALL|wx.EXPAND, border=5)
-    learnC2Box.Add(classText, 0, wx.EXPAND | wx.LEFT|wx.BOTTOM, border=5)
-    learnC2Box.Add(resultText, 0, wx.EXPAND | wx.LEFT|wx.BOTTOM, border=5)
+    learnC2Box.Add(self.classLabel, 0, wx.EXPAND | wx.LEFT|wx.BOTTOM, border=5)
+    learnC2Box.Add(self.allClassLabel, 0, wx.EXPAND | wx.LEFT|wx.BOTTOM, border=5)
+    learnC2Box.Add(self.finishC2Button, 0, wx.EXPAND | wx.LEFT|wx.BOTTOM, border=5)
     
     
     #Add the image canvases for the HMAX network results
-    canvasBoxSIa = wx.StaticBoxSizer(wx.StaticBox(self, -1, "SI a"), \
-                                   orient=wx.VERTICAL)
-    canvasSIa = ImageCanvas(self, -1, self._imgSize, 0,0, self.runImageClicked)
+    self.siBoxA = wx.StaticBox(self, -1, "SI a")
+    canvasBoxSIa = wx.StaticBoxSizer(self.siBoxA, orient=wx.VERTICAL)
+    canvasSIa = ImageCanvas(self, -1, canvasSize, 0,0, self.runImageClicked)
     canvasBoxSIa.Add(canvasSIa, 0, wx.BOTTOM | wx.LEFT| wx.RIGHT, border=2)
     
-    canvasBoxSIb = wx.StaticBoxSizer(wx.StaticBox(self, -1, "SI b"), \
-                                   orient=wx.VERTICAL)
-    canvasSIb = ImageCanvas(self, -1, self._imgSize, 0,1, self.runImageClicked)
+    self.siBoxB = wx.StaticBox(self, -1, "SI b")
+    canvasBoxSIb = wx.StaticBoxSizer(self.siBoxB, orient=wx.VERTICAL)
+    canvasSIb = ImageCanvas(self, -1, canvasSize, 0,1, self.runImageClicked)
     canvasBoxSIb.Add(canvasSIb, 0, wx.BOTTOM | wx.LEFT| wx.RIGHT, border=2)
     
-    canvasBoxS1a = wx.StaticBoxSizer(wx.StaticBox(self, -1, "S1a"), \
-                                   orient=wx.VERTICAL)
-    canvasS1a = ImageCanvas(self, -1, self._imgSize, 1,0, self.runImageClicked)
+    self.s1BoxA = wx.StaticBox(self, -1, "S1a")
+    canvasBoxS1a = wx.StaticBoxSizer(self.s1BoxA, orient=wx.VERTICAL)
+    canvasS1a = ImageCanvas(self, -1, canvasSize, 1,0, self.runImageClicked)
     canvasBoxS1a.Add(canvasS1a, 0, wx.BOTTOM | wx.LEFT| wx.RIGHT, border=2)
     
-    canvasBoxS1b = wx.StaticBoxSizer(wx.StaticBox(self, -1, "S1b"), \
-                                   orient=wx.VERTICAL)
-    canvasS1b = ImageCanvas(self, -1, self._imgSize, 1,1, self.runImageClicked)
+    self.s1BoxB = wx.StaticBox(self, -1, "S1b")
+    canvasBoxS1b = wx.StaticBoxSizer(self.s1BoxB, orient=wx.VERTICAL)
+    canvasS1b = ImageCanvas(self, -1, canvasSize, 1,1, self.runImageClicked)
     canvasBoxS1b.Add(canvasS1b, 0, wx.BOTTOM | wx.LEFT| wx.RIGHT, border=2)
     
-    
-    canvasBoxC1 = wx.StaticBoxSizer(wx.StaticBox(self, -1, "C1"), \
-                                   orient=wx.VERTICAL)
-    canvasC1 = ImageCanvas(self, -1, self._imgSize, 2,0, self.runImageClicked)
+    self.c1Box = wx.StaticBox(self, -1, "C1")
+    canvasBoxC1 = wx.StaticBoxSizer(self.c1Box, orient=wx.VERTICAL)
+    canvasC1 = ImageCanvas(self, -1, canvasSize, 2,0, self.runImageClicked)
     canvasBoxC1.Add(canvasC1, 0, wx.BOTTOM | wx.LEFT| wx.RIGHT, border=2)
     
-    canvasBoxS2 = wx.StaticBoxSizer(wx.StaticBox(self, -1, "S2"), \
-                                   orient=wx.VERTICAL)
-    canvasS2 = ImageCanvas(self, -1, self._imgSize, 3,0, self.runImageClicked)
+    self.s2Box = wx.StaticBox(self, -1, "S2")
+    canvasBoxS2 = wx.StaticBoxSizer(self.s2Box, orient=wx.VERTICAL)
+    canvasS2 = ImageCanvas(self, -1, canvasSize, 3,0, self.runImageClicked)
     canvasBoxS2.Add(canvasS2, 0, wx.BOTTOM | wx.LEFT| wx.RIGHT, border=2)
     
     #canvases[levelID][relativeLayerID]
@@ -419,55 +469,116 @@ class NetworkWindow(wx.Panel):
     self.SetSizer(vSizerMain)
     self.SetAutoLayout(1)
     
-  def resetS2Run(self, evt=None):
-    """ doc """
+  def resetS2Run(self, evt=None, confirm=True):
+    """ The user clicked the Reset Learning button to clear S2/C2 learning. """
+    if self.network.C2.hasBuiltSVM():
+      if confirm:
+        text = "This will reset all the C2 SVM learning as well. Continue?"
+        msg = wx.MessageDialog(self, text, "Reset Learning", \
+                               wx.OK | wx.CANCEL | wx.ICON_EXCLAMATION)
+        if msg.ShowModal()==wx.ID_CANCEL:
+          return
+      self.network.C2.resetLearning()
+      self.finishC2Button.Disable()
+      self.learnC2Spin.Enable()
+      self.c2TypeCombo.Select(0)
+      self.displayComboRun()
+      self.classLabel.SetLabel("0 learned for class 1")
+      self.allClassLabel.SetLabel("0 learned across 0 classes")
+    
+    if self.onButton.GetValue():
+      self.learnS2Button.SetValue(True)
+    self.learnC2Button.Disable()
+    self.network.S2.clearLearnedPatches()
+    self.numPatchText.SetLabel("0")
+    self.similarSpin.Enable()
   
   def learnS2Run(self, evt=None):
-    """ doc """
+    """ 
+    The user clicked the Learning S2 checkbox to enable or disable learning 
+    of S2 patches.
+    """
     if self.network!=None:
-      self.network.levels[3].filter.isLearning = self.learnS2Button.GetValue()
-  
+      GRBFFilter.SPATIAL_POOL_DIST = self.similarSpin.GetValue() / 100.0
+      isLearning = self.learnS2Button.GetValue()
+      self.network.S2.isLearning = isLearning
+      
+      #disable learn button on uncheck; dim spinners during learning
+      #self.learnS2Button.Enable(isLearning)
+      self.similarSpin.Disable()
+      
   def learnC2Run(self, evt=None):
-    """ doc """
+    """ 
+    The user clicked the Learning C2 checkbox to enable or disable learning 
+    of C2 classes.
+    """
     if self.network!=None:
-      self.network.levels[4].filter.isLearning = self.learnC2Button.GetValue()
+      self.network.C2.isLearning = self.learnC2Button.GetValue()
+      self.network.C2.learningClass = self.learnC2Spin.GetValue()
+  
+  def finishC2Run(self, evt=None):
+    """ 
+    The user clicked the Finish Learning C2 checkbox to finialize learning 
+    of C2 classes by training the final SVM model.
+    """
+    if self.network!=None:
+      self.network.C2.finishLearning()
+      self.learnC2Button.SetValue(False)
+      self.learnC2Button.Disable()
+      self.learnC2Spin.Disable()
+      self.finishC2Button.Disable()
+      self.c2TypeCombo.Select(1)
+      self.displayComboRun()
   
   def runImageClicked(self, mousePos, levelID, scaleID):
     """ 
     Result image was clicked, so draw bound boxes of clicked cell and
     around all cells representing previous layer inputs to the clicked cell.
+    @param mousePos: (x,y) pixel location mouse was lasted clicked.
+    @param levelID: integer id of the network level that was clicked in.
+    @param scaleID: integer id of the layer (scale) that was clicked in.
     """
     self._lastImageClick = (mousePos, levelID, scaleID)
     self.renderNetwork()
   
   def runNetworkOnce(self):
     """ 
-    If Regions are enabled to run, then run the Regions for one time step
-    using the last processed video frame.  The Region parameters are set
-    in their respective UI panels.
+    If the Network is enabled to run, then run the Network for one time step
+    using the last processed video frame.  The Network parameters are set
+    in their respective UI panels.  After run is finished, render the state
+    of the network layers onto their respective canvases.
     """
-    if self._frameOut and self.network!=None and self.onButton.GetValue():
-      print "Run Network..."
-      self.learnS2Run() #ensure learning states are up-to-date
-      self.learnC2Run()
-      
-      self.network.inference(self._frameOut)
-      
-      #TODO:
-      #stop S2 learning if exceed max patches
-      #hook up reset button to clearing filter.learned
-      #hook up C2 learning to filter, stop after x examples?
-      #  train entire svm once >1 classes are finished learning
-      #hook up C2 inference and result printing
-      
-      if self.learnS2Button.GetValue():
-        numPatches = len(self.network.levels[3].filter.learned)
-        self.numPatchText.SetLabel(str(numPatches))
-      else:
-        acc = self.network.getLastAccuracy()
-        self.accLabel.SetLabel(SIGF2.format(acc)+"%")
-      
-      self.renderNetwork()
+    if self._frameOut:
+      if self.network!=None and self.onButton.GetValue():
+        self.learnS2Run() #ensure learning states are up-to-date
+        self.learnC2Run()
+        
+        self.network.inference(self._frameOut)
+        
+        #if learning S2/C2, update labels and chec
+        if self.learnS2Button.GetValue():
+          numPatches = len(self.network.S2.learned)
+          self.numPatchText.SetLabel(str(numPatches))
+          if numPatches >= GRBFFilter.MAX_PATCHES:
+            self.learnC2Button.Enable()
+            self.learnS2Button.SetValue(False)
+            self.learnS2Run()
+            self.stopRun()
+        if self.learnC2Button.GetValue():
+          classID = self.learnC2Spin.GetValue()
+          ccount = self.network.C2.getCount(classID)
+          acount = self.network.C2.getCount()
+          aclass = self.network.C2.numClasses
+          
+          self.classLabel.SetLabel("%d learned for class %d" % (ccount, classID))
+          self.allClassLabel.SetLabel("%d learned across %d classes" % (acount, aclass))
+          self.finishC2Button.Enable()
+        
+        self.renderNetwork()
+      else: #if playout enabled, but no network, just render the playback frame
+        frameOut = self._frameOut.resize(Layer.canvasSize)
+        imageOut = Util.convertToWxImage(frameOut)
+        self.canvases[0][0].setBitmap(wx.BitmapFromImage(imageOut))
   
   def renderNetwork(self):
     """ 
@@ -486,13 +597,15 @@ class NetworkWindow(wx.Panel):
       for ci in xrange(len(self.canvases[i])):
         layer = levels[i].layers[li+ci]
         if i==3:
+          if self.c2TypeCombo.GetValue()=="C2 Results":
+            layer = levels[i+1].layers[li+ci]
           layer.renderLayer(self.canvases[i][ci], fa[i], norm[i], maxLevel3)
         else:
           layer.renderLayer(self.canvases[i][ci], fa[i], norm[i], maxGabor)
     
     self.renderSelection() #render user selection information
-    s1aArr = levels[1].layers[li].getLayerData(f=ti)
-    print numpy.max(s1aArr), numpy.min(s1aArr), numpy.mean(s1aArr)
+    #s1aArr = levels[1].layers[li].getLayerData(f=ti)
+    #print numpy.max(s1aArr), numpy.min(s1aArr), numpy.mean(s1aArr)
   
   def renderSelection(self):
     """
@@ -506,6 +619,15 @@ class NetworkWindow(wx.Panel):
     else:
       mousePos, levelID, scaleID = self._lastImageClick
     
+    #if we are learning S2 patches, display last learned patch
+    isDisplay = True
+    if self.learnS2Button.GetValue():
+      ll = self.network.S2.lastLearned
+      if ll!=None:
+        mousePos, levelID, scaleID = (ll[0],ll[1]), 3, 0
+        bbox = (mousePos[0]*1.0,mousePos[1]*1.0,0.0,0.0)
+        isDisplay = False
+    
     #self._mouseCallback(event.GetPositionTuple(), self.layerID, self.scaleID)
     #input: layer type, feature index (i.e. si[1], s1[2][theta=45], etc)
     #1) map pixel position to layer cell position that was clicked
@@ -515,7 +637,8 @@ class NetworkWindow(wx.Panel):
     ti = self.thetaCombo.GetSelection() #TODO more specific per layer
     li = self.scaleCombo.GetSelection()
     layerIn = self.network.levels[levelID].layers[li+scaleID]
-    bbox = layerIn.getBBoxDisplayToLayer(mousePos)
+    if isDisplay:
+      bbox = layerIn.getBBoxDisplayToLayer(mousePos)
     
     boxMap = layerIn.getBoundBoxHierarchy(bbox)
     
@@ -531,8 +654,8 @@ class NetworkWindow(wx.Panel):
     c1Type = self.c1TypeCombo.GetValue()
     if c1Type=="S2 Selection" and levelID!=3:
       self.canvases[2][0].setOverlayBitmaps(None)
-    else:
-      layerS2 = self.network.levels[3].layers[li+scaleID]
+    else: #"C1 Composite"
+      layerS2 = self.network.levels[3].layers[li]
       overlays = layerS2.generateS2InputBitmap(mousePos, c1Type)
       self.canvases[2][0].setOverlayBitmaps(overlays)
   
@@ -548,14 +671,14 @@ class NetworkWindow(wx.Panel):
     
     #if region previously created, rebuild if params changed
     self.__checkCreateNetwork()
-    #if not isOn:
-    #  self.statusValText.SetLabel("Inactive")
     
-    self.numScalesSpin.Enable(not isOn)
+    #self.numScalesSpin.Enable(not isOn)
     self.numThetasSpin.Enable(not isOn)
-    self.scaleCombo.Enable(isOn)
+    #self.scaleCombo.Enable(isOn)
     self.thetaCombo.Enable(isOn)
     self.c1TypeCombo.Enable(isOn)
+    self.c2TypeCombo.Enable(isOn)
+    self.maxPatchSpin.Enable(not isOn)
   
   def __checkCreateNetwork(self):
     """ 
@@ -565,17 +688,34 @@ class NetworkWindow(wx.Panel):
     """
     numScales = self.numScalesSpin.GetValue()
     numThetas = self.numThetasSpin.GetValue()
+    maxPatches = self.maxPatchSpin.GetValue()
     
     rebuild = False
     if not self.network:
       rebuild = self.onButton.GetValue()
-    elif len(self.network.thetas)!=numThetas or \
+    elif maxPatches!=GRBFFilter.MAX_PATCHES or \
+         len(self.network.thetas)!=numThetas or \
          len(self.network.levels[0].layers)!=numScales:
       rebuild = True
+      self.resetS2Run(confirm=False)
     
     if rebuild:
-      print "Rebuild HMAX Network..."
-      self.network = Network(self._regionShape, numScales, numThetas)
+      GRBFFilter.MAX_PATCHES = maxPatches
+      
+      self.network = Network(self._networkSize, numScales, numThetas)
+      
+      #Update the group labels on the layer canvases
+      #TODO need to handle correctly when viewing different scales
+      self.siBoxA.SetLabel(self.network.levels[0].layers[0].label)
+      self.siBoxB.SetLabel(self.network.levels[0].layers[1].label)
+      self.s1BoxA.SetLabel(self.network.levels[1].layers[0].label)
+      self.s1BoxB.SetLabel(self.network.levels[1].layers[1].label)
+      self.c1Box.SetLabel(self.network.levels[2].layers[0].label)
+      self.s2Box.SetLabel(self.network.levels[3].layers[0].label)
+      
+      #force S2 learning to be enabled on network creation
+      self.learnS2Button.SetValue(True)
+      self.learnS2Run()
       
       #Re-populate the visualizer options
       thetaItems = []
@@ -598,6 +738,10 @@ class NetworkWindow(wx.Panel):
   
   def displayComboRun(self, evt=None):
     """ A combo box toggling result visualization options has been selected. """
+    if self.c2TypeCombo.GetValue()=="C2 Results":
+      self.s2Box.SetLabel(self.network.levels[4].layers[0].label)
+    else:
+      self.s2Box.SetLabel(self.network.levels[3].layers[0].label)
     self.renderNetwork()
     
   def modeToggleRun(self, evt=None):
@@ -654,14 +798,17 @@ class NetworkWindow(wx.Panel):
     else:
       self._capture = cv.CaptureFromCAM(-1)
     
-    #reset running average accuracy values per Region on new capture
-#    for i in xrange(len(self.regionPanels)):
-#      self.regionPanels[i].resetRunningAverages()
-    
     #test if we can get frames from the input; error dialog if not
     try:
       frame = cv.QueryFrame(self._capture)
       frame.width #if frame is invalid, asking for width will fail
+      
+      #if reading from file, re-init the capture on success to ensure
+      #we do not throw away the very first frame on a test
+      if self.fileButton.GetValue():
+        fileName = self._videoDir+self.fileCombo.GetValue()
+        self._capture = cv.CaptureFromFile(fileName)
+      
     except:
       self._capture = None
       if self.fileButton.GetValue():
@@ -756,7 +903,7 @@ class NetworkWindow(wx.Panel):
       #Create a videoWriter to save processed camera inputs
       #CreateVideoWriter(filename, fourcc, fps, frame_size, is_color)
       self._videoWriter = cv.CreateVideoWriter(fileName, cv.CV_FOURCC('I','Y','U','V'), \
-                                               15, self._regionShape, 0)
+                                               15, self._networkSize, 0)
       self.recordCombo.Disable()
   
   def capture(self, event=None):
@@ -776,15 +923,7 @@ class NetworkWindow(wx.Panel):
     
     #if we have a valid processed image frame, pass it to the Region
     if frameOut:
-#      if self.camImage!=None:
-#        frameOut = self.camImage
-#      outMat[numpy.where(outMat<48)] = 0
-      
-      #draw the region input image to the screen canvas
-#      imageOut = convertToWxImage(frameOut.resize((self._width,self._height)))
-#      self.canvas1.setBitmap(wx.BitmapFromImage(imageOut))
-      
-      #update last processed frame, and process Regions if enabled
+      #update last processed frame, and process Network if enabled
       self._frameOut = frameOut
       self.runNetworkOnce()
     
@@ -814,22 +953,11 @@ class NetworkWindow(wx.Panel):
           self.loopSpin.SetValue(loopCount)
           del self._capture
           self.createCapture()
-          frame = cv.QueryFrame(self._capture)
       else:
         self.stopRun()
       return
     
-    #if video file's frame size is not 80x60, then assume video is unprocessed
-    #and instead pretend it came from the live camera by doing motion detection
-    if frame.width!=self._frame80.width or frame.height!=self._frame80.height:
-      return self.captureFromCamera()
-    
-    #convert file to gray-scale and build a PIL image from it
-    cv.CvtColor(frame, self._frame80, cv.CV_RGB2GRAY)
-    
-    frameOut = Image.fromstring('L', (self._frame80.width, self._frame80.height), \
-                                self._frame80.tostring(), 'raw', 'L', 0, 1)
-    return frameOut
+    return self.__processVideoFrame(frame)
   
   def captureFromCamera(self):
     """ 
@@ -837,67 +965,78 @@ class NetworkWindow(wx.Panel):
     on the acquired image.  If recording is enabled, also write the processed
     frame to an output video file. 
     """
-    frameOut = None
     frame = cv.QueryFrame(self._capture) # Grab the frame from the capture
+    if not frame:
+      self.stopRun()
+      return None
+    
+    frameOut = self.__processVideoFrame(frame)
+    
+    # Mirror if using camera, this is more intuitive for webcams
+    frameOut = ImageOps.mirror(frameOut)
+  
+    if self._videoWriter: #if recording enabled, write out to the video file
+      cvImage = Util.convertPILToCV(frameOut)
+      cv.WriteFrame(self._videoWriter, cvImage)
+    
+    return frameOut
+    
+  def __processVideoFrame(self, frame):
+    """ 
+    Process the most recently read video frame (either from the live 
+    camera or a video file) to prepare for passing into the network.
+    First we ensure the image size matches the size that the network
+    is expecting (we resize the image if needed).  Then if motion
+    detection is enabled we compare the current video frame to the
+    previous frame and only keep those pixels where changes have occurred.
+    If the live camera is used we perform a mirror operation for a more
+    intuitive look when using a front-facing webcam.
+    @param frame: the most recently acquired OpenCV video frame image.
+    """
+    #if frame exactly matches network and motionDetect is off, then
+    #just return a gray-scale version of the image to avoid extra resizes
+    if frame.width==self._networkSize[0] and frame.height==self._networkSize[1]:
+      if not self._motionDetect:
+        cv.CvtColor(frame, self._inputImageNet, cv.CV_RGB2GRAY)
+        return Image.fromstring('L', self._networkSize, 
+                                self._inputImageNet.tostring(), 'raw','L',0,1)
     
     #if camera's frame size is incorrect, resize to what we need
-    if frame.width!=self._imgSize[0] or frame.height!=self._imgSize[1]:
-      if self._camImage==None:
-        self._camImage = cv.CreateImage( self._imgSize, cv.IPL_DEPTH_8U, 3)
-      cv.Resize(frame, self._camImage)
+    canvasSize = Layer.canvasSize
+    if frame.width!=canvasSize[0] or frame.height!=canvasSize[1]:
+      if self._frameImage==None:
+        self._frameImage = cv.CreateImage(canvasSize, cv.IPL_DEPTH_8U, 3)
+      cv.Resize(frame, self._frameImage)
     else: #size is already correct, use frame as-is
-      self._camImage = frame
+      self._frameImage = frame
     
     #convert camera image to gray-scale to perform motion analysis
-    cv.CvtColor(self._camImage, self._inputImage, cv.CV_RGB2GRAY)
+    cv.CvtColor(self._frameImage, self._inputImage, cv.CV_RGB2GRAY)
     
     # perform motion detection and get the processed image frame
     # the new frame will either be None (no motion) or the motion box subset image
-    rect = self.processMotion()
+    rect = None
+    if self._motionDetect:
+      rect = self.processMotion()
     
-    if rect:
-#      image0 = Image.fromstring('RGB', (frame.width, frame.height), 
-#                                frame.tostring(), 'raw', 'BGR', 0, 1)
-#      image0 = image0.resize((self._width, self._height))
-#      mask0 = Image.fromstring('L', (self._threshImage.width, 
-#                                     self._threshImage.height), 
-#                               self._threshImage.tostring(), 'raw', 'L', 0, 1)
-#      xy = (rect[0], rect[1], rect[0]+rect[2], rect[1]+rect[3])
-#      draw = ImageDraw.Draw(image0)
-#      draw.rectangle(xy, outline="white")
-#      del draw
-#      
-#      #crop out motion box and mask out non-motion, then centerize in new image
-#      #fHalf = (rect[2]/2, rect[3]/2)
-#      #movePos = ((self._width/2)-fHalf[0], (self._height/2)-fHalf[1])
-#      movePos = xy
-#      
-#      draw = ImageDraw.Draw(self._motionImage)
-#      draw.rectangle((0,0,self._width,self._height), fill="black")
-#      del draw
-#      #imgBox = image0.crop(xy)
-#      imgMask = mask0.crop(xy)
-#      #self._motionImage.paste(imgBox, movePos, imgMask)
-#      self._motionImage.paste(imgMask, movePos)
-#      image = self._motionImage
-#      
-#      # Mirror, which is more intuitive for built-in cameras
-#      image = ImageOps.mirror(image)
-#      image0 = ImageOps.mirror(image0)
+    if rect!=None:
+      mask0 = Image.fromstring('L', canvasSize, 
+                               self._threshImage.tostring(), 'raw', 'L', 0, 1)
+      xy = (rect[0], rect[1], rect[0]+rect[2], rect[1]+rect[3])
       
-      camImage = Image.fromstring('L', (self._inputImage.width, self._inputImage.height), 
-                                self._inputImage.tostring(), 'raw', 'L', 0, 1)
-      camImage = camImage.resize(self._regionShape)
+      #erase motionImage and paste only thresholded motion pixels on top
+      draw = ImageDraw.Draw(self._motionImage)
+      draw.rectangle((0,0,self._networkSize[0],self._networkSize[1]), fill="black")
+      del draw
       
-#      imageOut = convertToWxImage(image0)
-#      self.canvas0.setBitmap(wx.BitmapFromImage(imageOut))
-      
-      frameOut = camImage#image.resize(self._regionShape)
-      if self._videoWriter:
-        cvImage = Util.convertPILToCV(frameOut)
-        cv.WriteFrame(self._videoWriter, cvImage)
+      imgMask = mask0.crop(xy)
+      self._motionImage.paste(imgMask, xy)
+      frameOut = self._motionImage
+    else:
+      frameOut = Image.fromstring('L', canvasSize, 
+                                  self._inputImage.tostring(), 'raw', 'L', 0, 1)
     
-    return frameOut
+    return frameOut.resize(self._networkSize)
   
   def processMotion(self):
     """
@@ -1037,17 +1176,26 @@ class ImageCanvas(wx.ScrolledWindow):
       dc.DrawRectangleRect(self._bboxSelection)
   
   def setBBoxSelection(self, bbox):
-    """ doc """
+    """ 
+    Assign the last selected bounding box for this canvas.
+    The bounding box is drawn as a red rectangle on top of
+    the primary canvas contents.
+    """
     self._bboxSelection = bbox
     self.Refresh()
     
   def setOverlayBitmaps(self, overlayList):
-    """ doc """
+    """ 
+    Assign an overlay bitmap to draw on top of the standard 
+    canvas contents. This allows effectively overwriting 
+    (part of all of) the default canvas contents with more 
+    customized results.
+    """
     self._overlayList = overlayList
     self.Refresh()
   
   def setDrawGrid(self, size):
-    """ doc """
+    """ Toggle whether to draw the layer cell grid lines. """
     self._grid = size
     self.Refresh()
     

@@ -1,56 +1,156 @@
-'''
+"""
 Created on May 5, 2011
 
 @author: barry
-'''
+
+Implementation of the GlobalMaxFilter (C2) used by the HMAX algorithm.
+
+This filter performs two steps:
+1) Perform a per-feature global maximum over position and scale.
+2) Train and infer using an SVM (Support Vector Machine) classifier.
+
+For (1) we receive input from the S2 GRBF layer.  This contains each layer
+cell's match to each of all learned S2 template patches.  So you could
+visualize this as a set of how well each template matched each position.
+
+The GlobalMaxFilter will loop over this information and determine, for
+each template patch, the value of the strongest match anywhere in the
+layer.  So i.e. patch #1 was compared against every layer position; some
+positions it did not match very well (~0.1) others better (~0.5) but in
+one particular location it matched with 0.7.  So the GlobalMaxFilter will
+simply take the 0.7 for patch 1.
+
+The result is a set of maximum match values for each of the S2 template patches.
+
+This result array is then fed into an SVM classifier in either a learning or
+inference phase.
+
+In the learning phase the user is expected to provide a class label (integer)
+that identifies the image.  We then store all the pairings of 
+(class-id, resultArray) and use these to train the SVM.
+
+Later during inference we take the same result-array this time without a class-id
+and ask the SVM to determine which class-id does the result most closely match.
+The SVM provides a set of probability values giving its best estimate (based on
+the earlier training data) how likely it is the current result matches the
+learned classes.
+
+The code uses the 3rd party 'libsvm' for the Support Vector Machine.
+It was developed by Chih-Chung Chang and Chih-Jen Lin and is available from:
+http://www.csie.ntu.edu.tw/~cjlin/libsvm/
+"""
 
 import numpy
+import HMAX
 from libsvm import svmutil
 from HMAX.LevelFilter import LevelFilter
 
 class GlobalMaxFilter(LevelFilter):
   """
   Performs a per-feature global maximum over position and scale in one 
-  or more input layers.
+  or more input layers.  Will then use an SVM (Support Vector Machine)
+  classifier to learn and infer results for the input data.
   """
 
-  def __init__(self, sCount, thetas):
+  def __init__(self, sCount):
     """
     @param sCount: number of scales over which to pool.
     """
     self.sCount = sCount
-    self.thetas = thetas
     self.isLearning = False
+    self.learningClass = 1
     self.learned = [] #svm data vectors of learned features
     self.classes = [] #svm class labels of learned features
-    self.accuracy = 0.0
-    self.svmModel = None
+    self.__classCounts = {}
+    self.__classImages = {} #map of classID to example input image
+    self.__svmModel = None
+  
+  @property
+  def numClasses(self):
+    """ Return the number of distinct SVM classes this filter has learned data for. """
+    return len(self.__classCounts)
+  
+  def hasBuiltSVM(self):
+    """ Return true if the filter has successfully trained an SVM Model. """
+    return self.__svmModel!=None
+  
+  def resetLearning(self):
+    """ Reset/clear all learning that has occurred in this filter. """
+    self.__svmModel = None
+    self.__classCounts = {}
+    self.__classImages = {}
+    self.learned = []
+    self.classes = []
+  
+  def getCount(self, classID=None):
+    """ 
+    Return a count of the number of examples that have been learned for 
+    the specified class index.  If None is passed in then the method returns
+    the cumulative count across all classes.  The method may return 0 if no
+    examples have been learned for the given index.
+    @param classID: index of the class to get a learn count for (None for cumulative).
+    """
+    if classID==None and len(self.__classCounts)>0:
+      return numpy.array(self.__classCounts.values()).sum()
+    return self.__classCounts.get(classID, 0)
+  
+  def finishLearning(self):
+    """ 
+    Method should be called to indicate that SVM learning is finished.
+    When this happens we take all the learned values and feed them into
+    a new SVM Model to train it for later inference.
+    """
+    if self.__svmModel==None:
+      #model = svm_train(y, x [, 'training_options'])
+      if HMAX.DEBUG:
+        print "creating svmModel..."
+      self.__svmModel = svmutil.svm_train(self.classes, self.learned, "-q -b 1")
+      if HMAX.DEBUG:
+        print "svmModel successfully trained"
   
   def computeLayer(self, layer):
     """
+    Override the computeLayer from LevelFilter in order to continue
+    with processing the learning or inferring using our SVM model.
+    If the SVM is trained and we are inferring, then the SVM inference
+    results are stored in the layer (which is assumed to be a LayerC2).
+    The layers are able to render themselves onto a wx canvas for 
+    inspection.
     @param layer: the output HmaxLayer to store results in.
     """
-    LevelFilter.computeLayer(layer)
+    LevelFilter.computeLayer(self, layer)
     
     #need to enable learning mode from UI (after S2 trained)
     #during training, need to pass in class labels
+    vec = layer.array[:,0,0].tolist() #contains vector of C2 maxes
     
-    vec = layer.array[:,0,0].tolist()
-    
-    if self.isLearning:
-      if len(self.learned)>=100 and self.svmModel==None:
-        #model = svm_train(y, x [, 'training_options'])
-        self.svmModel = svmutil.svm_train(self.classes, self.learned)
-        return
-      self.classes.append(0)
+    if self.isLearning and self.__svmModel==None:
+      #add to count for how many of this class have been learned
+      count = self.__classCounts.get(self.learningClass, 0)
+      self.__classCounts[self.learningClass] = count+1
+      
+      #copy base input image to use as example when showing SVM result
+      if count==0:
+        layer.saveExampleImage(self.learningClass)
+      
+      self.classes.append(self.learningClass)
       self.learned.append(vec)
-    elif self.svmModel!=None:
+      #print "learned svm ",len(self.learned),self.learningClass
+    elif self.__svmModel!=None:
       #p_labs, p_acc, p_vals = svm_predict(y, x, model [,'predicting_options'])
-      pLabs, pAcc, pVals = svmutil.svm_predict([0], vec, self.svmModel)
-      print "SVM Result: ", pLabs, pAcc, pVals
+      pLabs, pAcc, pVals = svmutil.svm_predict([0], [vec], self.__svmModel, "-b 1")
+      pVals = pVals[0]
+      #sort ids in case SVM classIDs not consecutive
+      ids = sorted(self.__classCounts.keys())
+      layer.setAccuracyResult(sorted(zip(pVals, ids),reverse=True))
+      if HMAX.DEBUG:
+        print "SVM Result: ", pLabs, pAcc, pVals
           
   def computeUnit(self, layerInputs, pos, f):
     """
+    Run the Filter on the input data from the previous network layer
+    at the specified position. The result value will be returned and is
+    expected to then be stored in the current output network layer.
     @param layerInputs: assume this is tuple of sCount inputLayers.
     @param pos: (x,y) tuple position in the image to center the filter on.
     @param f: feature index of learned feature to test input against.
@@ -62,91 +162,5 @@ class GlobalMaxFilter(LevelFilter):
         for yi in xrange(layerInput.ySize):
           v = layerInput.get((xi,yi), f)
           res = max(res, v)
-    
     return res
 
-
-#  def computeLayer(self, layerOut):
-#    """
-#    @param layer: the output HmaxLayer to store results in.
-#    """
-#    def unravel(layerIn, index):
-#      return (index / layerIn.ySize), (index % layerIn.ySize)
-#    
-#    def isAdjacent(ipos, lpos):
-#      """ Is ipos (x,y) within 1 spot of any of (x,y) in lpos list. """
-#      x,y = ipos
-#      for (lx,ly) in lpos:
-#        if abs(lx-x)<=1 and abs(ly-y)<=1:
-#          return True
-#      return False
-#    
-#    def insertPos(ipos, lpos):
-#      """ Insert ipos into the lpos list such that position sort is maintained. """
-#      x,y = ipos
-#      for i in xrange(len(lpos)):
-#        lx,ly = lpos[i]
-#        if y<ly or (y==ly and x<lx):
-#          lpos.insert(i, ipos)
-#          return
-#      lpos.append(ipos) #loop failed it means it adds at the end
-#    
-#    def createCluster(lpos, arrayS2):
-#      """ 
-#      Create a C2 cluster of S2 cells with relative positions generated
-#      from the absoluate positions in lpos list.
-#      @param arrayS2: matrix of S2Cell objects from input LayerS2.
-#      """
-#      cluster = []
-#      for x,y in lpos:
-#        cell = arrayS2[x][y]
-#        if len(cluster)==0:
-#          x0,y0 = x,y
-#          cell.rpos = (0,0)
-#        else:
-#          cell.rpos = (x-x0, y-y0)
-#        cluster.append(cell)
-#      return cluster
-#    
-#    layerIn = layerOut.inputLayers[0]
-#    
-#    #Find max sumv from layerIn (x3)
-#    #  remove max and bordering cells from consideration
-#    #  Find max of remaining cells and remove bordering again ...x3
-#    #Sort order by upper-left-most first, lower-right-most last
-#    #and store relative positions with (0,0) being first one
-#    inData = numpy.array(layerIn.getLayerData()).ravel()
-#    isort = inData.argsort()
-#    lpos = [unravel(layerIn, isort[-1])]
-#    for i in xrange(len(isort)-2,-1,-1):
-#      if len(lpos)>=3:
-#        break
-#      ipos = unravel(layerIn, isort[i])
-#      if not isAdjacent(ipos, lpos):
-#        insertPos(ipos, lpos)
-#    #lpos is ordered list of (xi,yi) positions of S2 cells
-#    
-#    #print "S2 Maxes: ",lpos
-#    cluster = createCluster(lpos, layerIn.arrayS2)
-#    #rp = [cell.rpos for cell in cluster]
-#    #print "S2 rpos: ",rp
-#    
-#    self.bestCluster = None
-#    self.lastCluster = cluster
-#    self.lastClusterPos = lpos[0]
-#    
-#    #If learning, store this cluster
-#    if self.isLearning:
-#      self.learned.append(cluster)
-#      print "C2 Learned ",len(self.learned)
-#    else:
-#      #If inference, compare this cluster to learned clusters:
-#      #  compare average of all distances of each (vmax,f)
-#      #  compare distance of relative position
-#      #return closest overall distance to any of learned clusters
-#      pcts = numpy.zeros(len(self.learned))
-#      for i in xrange(len(self.learned)):
-#        pcts[i] = self.compareClusters(cluster, self.learned[i])
-#      
-#      #print "meanMatch: %g%%" % (pcts.mean()*100.0)
-#      self.accuracy = pcts.mean()*100.0

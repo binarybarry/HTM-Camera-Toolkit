@@ -3,8 +3,27 @@ Created on Apr 28, 2011
 
 @author: Barry Maturkanich
 
-Implementation of Gabor filters used by the HMAX algorithm.
+Implementation of Gabor filters (S1) used by the HMAX algorithm.
+The Gabor filter is used to detect how strongly a patch of pixels
+matches lines of particular orientations.  The Gabor filter is
+commonly used to approximate the V1 area of neocortex.
 
+The equation to generate a Gabor filter is as follows:
+G(x,y) = exp(-(X^2 + r^2*Y^2) / 2sg^2) * cos(2pi*X / ld)
+
+where:
+ X = x*cos(theta) - y*sin(theta)
+ Y = x*sin(theta) + y*cos(theta)
+ r = aspectRatio
+ sg = sigma (effective width)
+ ld = lamda (wavelength)
+
+The response of a patch of pixels X to a particular S1/Gabor 
+filter is given by:
+R(X,G) = | sum(Xi*Gi) / sqrt(sum(Xi^2)) |
+
+Some common values used for various gabor filter sizes are as
+follows (obtained through trial-and-error experimentation):
 size --- sigma --- lambda -- C1
   7       2.8       3.5 
   9       3.6       4.6     8x8 4over
@@ -31,8 +50,8 @@ class GaborFilter(LevelFilter):
     @param size: the integer size (length and width) for this filter.
     @param thetas: the set of angle orientations, in radians, to use for this filter.
     @param lam: the lambda wavelength this filter is tuned with.
-    @param sigma:
-    @param aspect: the aspect ratio.
+    @param sigma: the effective width sigma to tune the filter to.
+    @param aspect: the aspect ratio to tune the filter to.
     """
     assert size % 2 == 1 #size must be an odd number
     s2 = size / 2
@@ -69,9 +88,13 @@ class GaborFilter(LevelFilter):
   
   def computeUnit(self, layerInputs, pos, f):
     """
-    doc
-    @param image: numpy matrix representing the input gray-scale image.
+    Run the GaborFilter on the input data from the previous network layer
+    at the specified position. The result value will be returned and is
+    expected to then be stored in the S1 network layer.
+    @param layerInputs: layer containing a numpy matrix representing 
+    the input gray-scale image.
     @param pos: (x,y) tuple position in the image to center the filter on.
+    @param f: the feature index (in this case the theta index) to run.
     """
     cx,cy = pos
     layerInput = layerInputs[0]
@@ -103,6 +126,9 @@ class GaborFilter(LevelFilter):
   
   def getInputBoundBox(self, layer, rbbox):
     """
+    Determine the pixel bounding box corresponding to the input retinal-space
+    bounding box.  This method is primarily used to generate feedback used
+    in the UI to render input sources for higher layer results.
     @param layerInput: the layer the filter will read input values from.
     @param rbbox: the retinal bound box within the current layer.
     @return tuple (x,y, w,h) bounding box pixel coordinates.
@@ -126,6 +152,8 @@ class GaborFilter(LevelFilter):
 class GaborFilterC(GaborFilter):
   """
   GaborFilterC is a python wrapper for the C++ hmaxc.GaborFilterC object.
+  The C++ implementation runs the same algorithm but with much better
+  performance.
   """
   
   def __init__(self, thetas, size=11, lam=5.6, sigma=4.5, aspect=0.3):
@@ -141,7 +169,7 @@ class GaborFilterC(GaborFilter):
     self.size = size
     cthetas = hmaxc.floatCArray(len(thetas))
     for i in xrange(len(thetas)):
-      print "pyTheta"+str(i)+": ",thetas[i]
+      #print "pyTheta"+str(i)+": ",thetas[i]
       cthetas[i] = thetas[i]
     self.cGabor = hmaxc.GaborFilterC(cthetas, len(thetas), size, lam, sigma, aspect)
   
