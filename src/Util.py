@@ -15,7 +15,7 @@ import wx
 import cv
 import numpy
 from PIL import Image, ImageDraw
-from scipy import mat, linalg
+#from scipy import mat, linalg
 from math import sqrt, sin, cos, radians
 
 def generateVideoClip(videoDir="./video/"):
@@ -228,6 +228,9 @@ def calculateBlobPCA(array):
   Given the 2D numpy array perform Principle Component Analysis
   on the pixels to find the center of gravity as well as the principle
   direction vectors to represent strongest rotation direction.
+  NOTE: this method requires the scipy library but more to make for
+  easier install requirements this mehtod is disabled and always returns
+  None for now.
   """
   S = numpy.sum(array)
   
@@ -252,9 +255,11 @@ def calculateBlobPCA(array):
   oj *= (1.0/S)
   oij *= (1.0/S)
   
-  C = mat([[oi,oij],[oij,oj]]) #covarience matrix
-  la,v = linalg.eig(C)         #eigen vectors/values
-  return (ui,uj), (v[:,0]*sqrt(la[0]), v[:,1]*sqrt(la[1]))
+  #TODO: requires scipy dependency
+  #C = mat([[oi,oij],[oij,oj]]) #covarience matrix
+  #la,v = linalg.eig(C)         #eigen vectors/values
+  #return (ui,uj), (v[:,0]*sqrt(la[0]), v[:,1]*sqrt(la[1]))
+  return None #return None until scipy required
 
 def createMeanImage(image, radius=1):
   """ 
