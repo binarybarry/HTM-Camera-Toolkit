@@ -18,12 +18,44 @@ http://www.pythonware.com/products/pil/
 http://sourceforge.net/projects/numpy/files/NumPy/1.5.1/
 http://opencv.willowgarage.com/wiki/
 
-I have only tested on Win7-64 and Vista-32 however all the code libraries used are available for Mac and Linux as well so there are good odds it will also run on those platforms.
 
-The HMAX toolkit uses native c++ libraries for performance reasons.  Currently I only include pre-built libraries for win32.  You will need to recompile if desired to run on other platforms.  To do this you will need gcc/mingw and SWIG installed (I use 2.0.4) and then run setup.py to compile. You will also need to compile/build the LIBSVM 3rd party library.
+Building under Windows
+======================
 
-Once you have all of the above installed with proper PATH and PYTHONPATH environment variables set up (i.e. make sure your python installation is on the PYTHONPATH and python/OpenCV/libsvm.dll are on the PATH), you can run the toolkit from a command-line:
+HTM Camera and HMAX Toolkits were tested under:
+* Win7-64
+* Vista-32
+ 
+No special build instructions are needed under Windows since all the necessary libraries are part of the GIT tree.  Make sure your python installation is on the PYTHONPATH and python/OpenCV/libsvm.dll are all on the PATH.
 
+
+Building under Linux
+====================
+
+HTM Camera and HMAX Toolkits were tested under:
+* Linux Ubuntu 10.04
+
+For HMAX you will need to install or build the LIBSVM 3rd party library available at http://www.csie.ntu.edu.tw/~cjlin/libsvm. Preferred version is 3.1.
+
+The HMAX toolkit uses native c++ libraries for performance reasons.  Currently I only include pre-built libraries for win32.  You will need to recompile if desired to run on Linux.  To do this you will need gcc/mingw and SWIG installed (I use 2.0.4) and then run following commands to build _hmaxc.so:
+
+cd src
+python setup.py build
+export PYTHONPATH=$PWD
+
+
+Building under Mac
+==================
+
+All the code libraries used are available for Mac as well so there are good odds it will also run on that platform.  However this was never tested so far.
+
+
+Running under Windows/Linux/Mac
+===============================
+
+Once you have all of the above installed with proper PATH and PYTHONPATH environment variables set up, you can run the toolkit from a command-line:
+
+cd src
 python CameraToolkit.py
 or
 python HMAXToolkit.py

@@ -15,12 +15,13 @@ To run (on win32) type the following on command line:
 
 python setup.py build -c mingw32
 
-Linux probably does not need the "-c mingw32".  
+Linux is the same but does not need the "-c mingw32".  
 I assume it will default to using whichever gcc is on the 
 PATH; most likely this will be fine.
 """
 
 import os
+import sys
 import shutil
 from distutils.core import setup, Extension
 
@@ -43,7 +44,12 @@ setup (name = 'hmaxc',
        )
 
 shutil.copyfile(cDir+"hmaxc.py", "hmaxc.py")
-shutil.copyfile("build"+os.sep+"lib.win32-2.6"+os.sep+"_hmaxc.pyd", "_hmaxc.pyd")
+if os.name == 'nt':
+  shutil.copyfile("build"+os.sep+"lib.win32-2.6"+os.sep+"_hmaxc.pyd", "_hmaxc.pyd")
+elif os.name == 'posix':
+  shutil.copyfile("build"+os.sep+"lib.linux-i686-2.6"+os.sep+"_hmaxc.so", "_hmaxc.so")
+else:
+  sys.exit("do not know what to do under OS '" + os.name + "'")
 
 #ext_modules=[Extension('_foo', ['foo.i'],
 #                             swig_opts=['-modern', '-I../include'])]
