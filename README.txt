@@ -1,4 +1,6 @@
-The HTM Camera Toolkit is a research application that allows easy experimentation of Numenta's Hierarchical Temporal Memory (HTM) algorithms using real world video input from a camera/webcam.
+The HTM Camera Toolkit is a research application that allows easy experimentation of Numenta's Hierarchical Temporal Memory (HTM) algorithms using real world video input from a camera/webcam.  
+
+The Camera Toolkit runs a Python implementation of the HTM algorithm however I also have C++ and Java implementations.  These are not currently hooked into the Camera Toolkit app.  I have been using them to experiment with other environments to compare performance (C++) and ease of access with other supporting tools (Swing+Hadoop in Java).  Both should be usable if you are interested in running the HTM algorithm code in your own research projects (note: the C++ version only has a partially implemented spatial pooler; Java should be complete).
 
 Also included in this project is my HMAX Camera Toolkit.  This is another research application that implements the HMAX computer vision algorithm.  This toolkit allows training multiple classes of objects using video input and later classifying subsequent video input frames as one of the several trained classes.
 
@@ -47,7 +49,17 @@ export PYTHONPATH=$PWD
 Building under Mac
 ==================
 
-All the code libraries used are available for Mac as well so there are good odds it will also run on that platform.  However this was never tested so far.
+HTM Camera Toolkit was tested under:
+* Mac OSX 10.6 Snow Leopard
+* Mac OSX 10.7 Lion
+
+OpenCV and Python are very easy to install on Mac using MacPorts (www.macports.org).  MacPorts can download and install various Mac software projects with little effort.  Once you have MacPorts installed you can use it to obtain OpenCV and the Python tools using the following commands (thanks to crizCraig for recommending MacPorts):
+
+sudo port install opencv +python26
+sudo port install py26-pil
+sudo port install py26-wxpython
+
+The HMAX Toolkit requires recompiling the native c++ libraries.  Should work similar to Linux, but has not yet been tested on Mac.
 
 
 Running under Windows/Linux/Mac
