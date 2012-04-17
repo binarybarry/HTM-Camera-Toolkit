@@ -16,10 +16,13 @@ import java.util.Set;
  */
 public class Segment {
   
+  static final int MAX_TIME_STEPS = 10; //most prediction steps to track
+  
   private final List<Synapse> _synapses;
   private boolean _isSequence;
-  private float _segActiveThreshold;
-
+  private int _predictionSteps;
+  private final float _segActiveThreshold;
+  
   /**
    * Initialize a new Segment with the specified segment activation threshold.
    */
@@ -38,7 +41,7 @@ public class Segment {
    * @param sequence true to make the segment a sequence segment, false not.
    */
   public void setSequence(boolean sequence) { 
-    _isSequence = sequence; 
+    _isSequence = sequence;
   }
   
   /**
@@ -47,6 +50,32 @@ public class Segment {
    */
   public boolean isSequence() { 
     return _isSequence; 
+  }
+  
+  /**
+   * Define the number of time steps in the future an activation will occur
+   * in if this segment becomes active.  For example if the segment is intended 
+   * to predict activation in the very next time step (t+1) then this value is 
+   * 1. If the value is 2 this segment is said to predict its Cell will activate
+   * in 2 time steps (t+2) etc.  By definition if a segment is a sequence
+   * segment it has a value of 1 for prediction steps.
+   * @param steps the number of steps into the future an activation will occur
+   * in if this segment becomes active.
+   */
+  public void setNumPredictionSteps(int steps) {
+    _predictionSteps = Math.min(Math.max(1, steps), MAX_TIME_STEPS);
+    setSequence(_predictionSteps==1);
+  }
+  
+  /**
+   * Return the number of time steps in the future an activation will occur
+   * in if this segment becomes active.  For sequence segments this value will
+   * be 1 (for t+1 activation prediction).
+   * @return the number of steps into the future an activation will occur
+   * in if this segment becomes active.
+   */
+  public int numPredictionSteps() {
+    return _predictionSteps;
   }
   
   /**
@@ -263,6 +292,12 @@ public class Segment {
     }
     return c >= _segActiveThreshold;
   }
-
-
+  
+  /**
+   * Return the assigned segment activation threshold.  The threshold represents
+   * how many synapses must be active on a segment for it to be active.
+   */
+  public float getSegmentActiveThreshold() {
+    return _segActiveThreshold;
+  }
 }

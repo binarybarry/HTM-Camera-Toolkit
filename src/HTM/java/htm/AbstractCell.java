@@ -39,6 +39,15 @@ public abstract class AbstractCell {
   public abstract int iy();
   
   /**
+   * Return the linear grid array index this Cell represents within its associated
+   * input data array.  While the ix/iy methods define the Cell's location within
+   * a 2d grid space, this method returns the index within the same data as viewed
+   * as a normal flat 1d array.
+   * @return the linear grid array index this Cell represents.
+   */
+  public abstract int gridIndex();
+  
+  /**
    * Return true if this Cell represents a Cell connected to distal segments
    * (as opposed to proximal segments connected to columns).
    */

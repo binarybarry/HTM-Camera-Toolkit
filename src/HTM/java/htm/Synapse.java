@@ -16,7 +16,7 @@ public class Synapse {
   public static final float INITIAL_PERMANENCE = 0.3f;//initial permanence for distal synapses
   public static final float PERMANENCE_INC = 0.015f;  //Amount permanences of synapses are incremented in learning.
   public static final float PERMANENCE_DEC = 0.005f;  //Amount permanences of synapses are decremented in learning.
-
+  
   /**
    * @param inputSource: object providing source of the input to this synapse
    * (either a Column's Cell or a special InputCell.
@@ -107,6 +107,15 @@ public class Synapse {
       amount = PERMANENCE_DEC;
     _permanence = (float)Math.max(0.0, _permanence-amount);
   }
+  
+  /**
+   * Return the current permanence value representing the connection strength
+   * of this synapse.  The permanence is always a value between 0 and 1 where
+   * 0 means not connected at all and 1 means fully connected.
+   */
+  public float getPermanence() {
+    return _permanence;
+  }
 
   /**
    * Return a reference to this synapse's distal cell.  Important
@@ -114,6 +123,14 @@ public class Synapse {
    */
   public Cell getCell() {
     return (Cell)_inputSource;
+  }
+  
+  /**
+   * Return a reference to the input source for this synapse.  This is will be an
+   * HTM Cell for distal synapses or an InputCell for proximal synapses.
+   */
+  public AbstractCell getInputSource() {
+    return _inputSource;
   }
   
   /**

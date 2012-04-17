@@ -17,6 +17,7 @@ public class Cell extends AbstractCell {
   private boolean _wasActive;
   private boolean _isPredicting;
   private boolean _wasPredicted;
+  private int _predictionSteps = 0;
   private boolean _isLearning;
   private boolean _wasLearning;
   private List<Segment> _segments = new ArrayList<Segment>(5);
@@ -64,12 +65,18 @@ public class Cell extends AbstractCell {
   public int ix() {
     return _column.cx();
   }
-
+  
   @Override
   public int iy() {
     return _column.cy();
   }
   
+  @Override
+  public int gridIndex() {
+    return _column.gridIndex();
+  }
+  
+  /** Return the Cell's index position within its Column. */
   public int getIndex() { return _index; }
   @Override
   public boolean isDistal() { return true; }
@@ -78,10 +85,45 @@ public class Cell extends AbstractCell {
   public boolean isPredicting() { return _isPredicting; }
 
   public boolean wasPredicted() { return _wasPredicted; }
+  
+  /**
+   * Return the fewest number of time steps until this Cell
+   * believes it will becomes active. The last prediction steps value 
+   * represents the fewest number of time steps this Cell believes it will 
+   * becomes active in.  This value will often be a count down that approaches 
+   * zero as time steps move forward and the Cell gets closer to becoming 
+   * activated.  If the Cell is not currently in a predicting state this value 
+   * should be ignored.
+   * @return the fewest number of time steps until this Cell believes it will
+   * becomes active.
+   */
+  public int getPredictionSteps() { 
+    return _predictionSteps; 
+  }
 
   void setActive(boolean active) { _isActive = active; }
   void setLearning(boolean learning) { _isLearning = learning; }
-  void setPredicting(boolean predicting) { _isPredicting = predicting; }
+  
+  /**
+   * Toggle whether this Cell is currenty in the predicting state or not.
+   * If the Cell enters the predicting state it will also cache the value of
+   * the prediction steps for the active segment causing this Cell to predict.
+   * If there are more than 1 such segment, we cache the value of the least
+   * number of time steps until an activation occurs.  The cache value will
+   * only reset each time the Cell enters a new predicting state.
+   * @param predicting true if the Cell is now predicting, false if it no
+   * longer is.
+   */
+  void setPredicting(boolean predicting) { 
+    _isPredicting = predicting;
+    if(_isPredicting) {
+      _predictionSteps = Segment.MAX_TIME_STEPS;
+      for(Segment seg : _segments) {
+        if(seg.isActive() && seg.numPredictionSteps()<_predictionSteps)
+          _predictionSteps = seg.numPredictionSteps();
+      }
+    }
+  }
   
   public int numSegments() { return _segments.size(); }
   public int numSegmentUpdates() { return _segmentUpdates.size(); }
@@ -209,8 +251,8 @@ public class Cell extends AbstractCell {
    *  These segment updates are only applied when the applySegmentUpdates
    *  method is later called on this Cell.
    */
-  SegmentUpdateInfo updateSegmentActiveSynapses(boolean previous, Segment segment,
-      boolean newSynapses) {
+  SegmentUpdateInfo updateSegmentActiveSynapses(boolean previous, 
+      Segment segment, boolean newSynapses) {
     Set<Synapse> activeSyns = new HashSet<Synapse>();
     if(segment!=null) {
       if(previous)
@@ -264,22 +306,46 @@ public class Cell extends AbstractCell {
     //delete segment update instances after they are applied
     _segmentUpdates.clear();
   }
-
+  
   /**
-   *  For this cell (at t-1 if previous=True else at t), find the segment (only
-   *  consider sequence segments if isSequence is True, otherwise only consider
-   *  non-sequence segments) with the largest number of active synapses.
+   *  For this cell in the previous time step (t-1) find the segment with the 
+   *  largest number of active synapses.<p>
+   *  However only consider segments that predict activation in the number of 
+   *  time steps of the active segment of this cell with the least number of 
+   *  steps until activation + 1.  For example if right now this cell is being 
+   *  predicted to occur in t+2 at the earliest, then we want to find the best 
+   *  segment from last time step that would predict for t+3.<p>
    *  This routine is aggressive in finding the best match. The permanence
    *  value of synapses is allowed to be below connectedPerm.
    *  The number of active synapses is allowed to be below activationThreshold,
    *  but must be above minThreshold. The routine returns that segment.
-   *  If no segments are found, then None is returned.
+   *  If no segments are found, then null is returned.
+   *  @return the best matching previous segment, or null if none found.
    */
-  Segment getBestMatchingSegment(boolean isSequence, boolean previous) {
+  Segment getBestMatchingPreviousSegment() {
+    return getBestMatchingSegment(_predictionSteps+1, true);
+  }
+
+  /**
+   *  For this cell (at t-1 if previous=True else at t), find the segment (only
+   *  consider segments that predict activation in exactly 
+   *  <code>numPredictionSteps</code> number of time steps) with the largest 
+   *  number of active synapses.<p>
+   *  This routine is aggressive in finding the best match. The permanence
+   *  value of synapses is allowed to be below connectedPerm.
+   *  The number of active synapses is allowed to be below activationThreshold,
+   *  but must be above minThreshold. The routine returns that segment.
+   *  If no segments are found, then null is returned.
+   *  @param numPredictionSteps only consider segments that are predicting
+   *  cell activation to occur in exactly this many time steps from now.
+   *  @param previous if true only consider active segments from t-1 else 
+   *  consider active segments right now.
+   */
+  Segment getBestMatchingSegment(int numPredictionSteps, boolean previous) {
     Segment bestSegment = null;
     int bestSynapseCount = MIN_SYNAPSES_PER_SEGMENT_THRESHOLD;
     for(Segment seg : _segments) {
-      if(seg.isSequence()==isSequence) {
+      if(seg.numPredictionSteps()==numPredictionSteps) {
         int synCount = 0;
         if(previous)
           synCount = seg.getPrevActiveSynapseCount(false);

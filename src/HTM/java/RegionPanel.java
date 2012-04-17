@@ -61,8 +61,9 @@ public class RegionPanel extends JPanel {
   @Override
   public Dimension getPreferredSize() {
     double ratio = _region.getWidth()*1.0 / _region.getHeight()*1.0;
-    int maxWidth = Math.min(1000, 60*_region.getWidth()); //max 60pixels per col
-    return new Dimension(maxWidth, Math.max(150, (int)(maxWidth/ratio)));
+    int maxWidth = Math.min(1050, 60*_region.getWidth()); //max 60pixels per col
+//    return new Dimension(maxWidth, Math.max(150, (int)(maxWidth/ratio)));
+    return new Dimension(maxWidth, Math.min(925, Math.max(150, (int)(maxWidth/ratio))));
   }
 
   @Override
@@ -247,12 +248,21 @@ public class RegionPanel extends JPanel {
     boolean wasDrawn = false;
     
     //Filled green circles for predicting cells (yellow for non-sequence)
+    //various colors in-between for specific numbers of prediction steps
     if(cell.isPredicting()) {
       wasDrawn = true;
-      if(cell.hasActiveSequenceSegment())
-        g.setColor(Color.GREEN);
-      else
-        g.setColor(Color.YELLOW);
+      switch(cell.getPredictionSteps()) {
+        case 1: g.setColor(Color.GREEN); break;
+        case 2: g.setColor(Color.CYAN); break;
+        case 3: g.setColor(Color.BLUE); break;
+        case 4: g.setColor(Color.PINK); break;
+        case 5: g.setColor(Color.MAGENTA); break;
+        case 6: g.setColor(Color.RED); break;
+        case 7: g.setColor(Color.ORANGE); break;
+        case 8: g.setColor(Color.DARK_GRAY); break;
+        case 9: g.setColor(Color.GRAY); break;
+        default: g.setColor(Color.YELLOW); break;
+      }
       g.fillOval(cx-rad, cy-rad, rad*2, rad*2);
     }
     

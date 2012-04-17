@@ -48,4 +48,9 @@ public class InputCell extends AbstractCell {
   public int iy() {
     return _y;
   }
+
+  @Override
+  public int gridIndex() {
+    return _index;
+  }
 }

@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Column.cpp
+ * Column.java
  *
  *  Created on: Sep 22, 2011
  *      Author: barry
@@ -39,6 +39,9 @@ public class Column {
 
   public final float EMA_ALPHA = 0.005f;//Exponential Moving Average alpha value
   
+  /**
+   * Helper container class to hold a Cell and Segment.
+   */
   public static class CellAndSegment {
     public final Cell cell;
     public final Segment segment;
@@ -92,6 +95,8 @@ public class Column {
   public int iy() { return _iy; }
   public int cx() { return _cx; }
   public int cy() { return _cy; }
+  public int gridIndex() { return (_cy*_region.getHeight())+_cx; }
+  
   public boolean isActive() { return _isActive; }
   void setActive(boolean isActive) { _isActive = isActive; }
   public int getOverlap() { return _overlap; }
@@ -126,18 +131,24 @@ public class Column {
   }
 
   /**
-   *  For this column, return the cell with the best matching segment (at time t-1 if
-   *  prevous=True else at time t). Only consider sequence segments if isSequence
-   *  is True, otherwise only consider non-sequence segments. If no cell has a
-   *  matching segment, then return the cell with the fewest number of segments.
-   *  @return a list containing the best cell and its best segment (may be None).
+   *  For this column, return the cell with the best matching segment (at time 
+   *  t-1 if prevous=true else at time t). only consider segments that are 
+   *  predicting cell activation to occur in exactly numPredictionSteps many 
+   *  time steps from now. If no cell has a matching segment, then return the 
+   *  cell with the fewest number of segments.
+   *  @param numPredictionSteps only consider segments that are predicting
+   *  cell activation to occur in exactly this many time steps from now.
+   *  @param previous if true only consider active segments from t-1 else 
+   *  consider active segments right now.
+   *  @return an object containing the best cell and its best segment.
    */
-  CellAndSegment getBestMatchingCell(boolean isSequence, boolean previous) {
+  CellAndSegment getBestMatchingCell(int numPredictionSteps, boolean previous) {
     Cell bestCell = null;
     Segment bestSeg = null;
     int bestCount = 0;
     for(int i=0; i<_cells.length; ++i) {
-      Segment seg = _cells[i].getBestMatchingSegment(isSequence, previous);
+      Segment seg = 
+        _cells[i].getBestMatchingSegment(numPredictionSteps, previous);
       if(seg!=null) {
         int synCount = 0;
         if(previous)

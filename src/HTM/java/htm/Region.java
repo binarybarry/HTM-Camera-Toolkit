@@ -273,6 +273,7 @@ public class Region {
   }
   
   /////  Accessor methods ///////////////////////////////
+  public int getID() { return hashCode(); } //TODO more formal ID
   public int getWidth() { return _width; }
   public int getHeight() { return _height; }
   public int getInputWidth() { return _inputWidth; }
@@ -374,6 +375,39 @@ public class Region {
           outData[(col.cy()*_height)+cx] = (byte)1;
         }
       }
+    }
+  }
+  
+  /**
+   * Populate the outData array with the current prediction values for each
+   * column in the Region.  The value returned for a column represents the
+   * fewest number of time steps the column believes an activation will occur.
+   * For example a 1 value means the column is predicting it will become active
+   * in the very next time step (t+1).  A value of 2 means it expects activation
+   * in 2 time steps (t+2) etc.  A value of 0 means the column is not currently
+   * making any prediction.
+   * @param outData this array will be populated with the prediction values for
+   * each column in the region based on the most recently processed time step.
+   * This array must be have length equal to the number of columns in the 
+   * region.
+   */
+  public void getColumnPredictions(byte[] outData) {
+    assert outData.length==_width*_height;
+    Arrays.fill(outData, (byte)0);
+    for(Column col : _columns) {
+      //if a column has multiple predicting cells, find the one that is making
+      //the prediction that will happen the earliest and store that value
+      boolean colOK = false;
+      byte p = (byte)Segment.MAX_TIME_STEPS;
+      for(int i=0; i<col.numCells(); i++) {
+        Cell cell = col.getCell(i);
+        if(cell.isPredicting() && cell.getPredictionSteps()<p) {
+          p = (byte)cell.getPredictionSteps();
+          colOK = true;
+        }
+      }
+      if(colOK)
+        outData[(col.cy()*_width)+col.cx()] = p;
     }
   }
 
@@ -887,18 +921,15 @@ public class Region {
 
         if(_temporalLearning && !learningCellChosen) {
           //printf("bestSeg for (%d %d)\n", col->cx(), col->cy());
-          CellAndSegment cas = col.getBestMatchingCell(true, true);
+          CellAndSegment cas = col.getBestMatchingCell(1, true);
           Cell bestCell = cas.cell;
           Segment bestSeg = cas.segment;
           bestCell.setLearning(true);
 
-          //if(bestSeg==null)
-          //  System.out.println("bestSeg is NULL");
-
           //segUpdate is added internally to Cell's update list
           SegmentUpdateInfo segmentToUpdate =
               bestCell.updateSegmentActiveSynapses(true, bestSeg, true);
-          segmentToUpdate.setSequence(true);
+          segmentToUpdate.setNumPredictionSteps(1); //isSequence = true
 
           //#bestSeg may be partial-sort-of match, but it could dec-perm
           //#other syns from different step if cell overlaps...
@@ -910,7 +941,6 @@ public class Region {
         }
       }
     }
-    //printf("Phase 2\n");
 
     //Phase2
     //42. for c, i in cells
@@ -948,11 +978,15 @@ public class Region {
         //   match to activity during the previous time step (lines 50-53).
         if(_temporalLearning && cell.isPredicting()) {
           //printf("predSegment is ");
-          Segment predSegment = cell.getBestMatchingSegment(false, true);
-          //printf("%d\n", predSegment);
-          //TODO if predSegment is None, do we still add new? ok if same as above seg?
-          //SegmentUpdateInfo* predSegUpdate =
-          cell.updateSegmentActiveSynapses(true, predSegment, true);
+          Segment predSegment = cell.getBestMatchingPreviousSegment();
+          
+          //either update existing or add new segment for this cell considering
+          //only segments matching the number of prediction steps of the
+          //best currently active segment for this cell
+          SegmentUpdateInfo predSegUpdate =
+              cell.updateSegmentActiveSynapses(true, predSegment, true);
+          if(predSegment==null)
+            predSegUpdate.setNumPredictionSteps(cell.getPredictionSteps()+1);
         }
       }
     }
@@ -1086,7 +1120,7 @@ public class Region {
 
             if(learning && !learningCellChosen) {
               //printf("bestSeg for (%d %d)\n", col->cx(), col->cy());
-              CellAndSegment cas = col.getBestMatchingCell(true, true);
+              CellAndSegment cas = col.getBestMatchingCell(1, true);
               Cell bestCell = cas.cell;
               Segment bestSeg = cas.segment;
               bestCell.setLearning(true);
@@ -1094,7 +1128,7 @@ public class Region {
               //segUpdate is added internally to Cell's update list
               SegmentUpdateInfo segmentToUpdate =
                   bestCell.updateSegmentActiveSynapses(true, bestSeg, true);
-              segmentToUpdate.setSequence(true);
+              segmentToUpdate.setNumPredictionSteps(1); //isSequence = true
             }
           }
         }
@@ -1140,8 +1174,15 @@ public class Region {
             //   this activation, i.e. a segment that has a (potentially weak)
             //   match to activity during the previous time step (lines 50-53).
             if(learning && cell.isPredicting()) {
-              Segment predSegment = cell.getBestMatchingSegment(false, true);
-              cell.updateSegmentActiveSynapses(true, predSegment, true);
+              Segment predSegment = cell.getBestMatchingPreviousSegment();
+              
+              //either update existing or add new segment for this cell considering
+              //only segments matching the number of prediction steps of the
+              //best currently active segment for this cell
+              SegmentUpdateInfo predSegUpdate =
+                  cell.updateSegmentActiveSynapses(true, predSegment, true);
+              if(predSegment==null)
+                predSegUpdate.setNumPredictionSteps(cell.getPredictionSteps()+1);
             }
           }
         }

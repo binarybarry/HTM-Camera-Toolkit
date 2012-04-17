@@ -5,7 +5,7 @@ import java.util.Random;
 import java.util.Set;
 
 /**
- * SegmentUpdateInfo.cpp
+ * SegmentUpdateInfo.java
  *
  *  Created on: Sep 26, 2011
  *      Author: barry
@@ -28,7 +28,7 @@ public class SegmentUpdateInfo {
   private Set<Synapse> _activeSynapses;
   private Set<Cell> _learningCells;
   private boolean _addNewSynapses;
-  private boolean _isSequence;
+  private int _numPredictionSteps;
   private Set<Synapse> _addedSynapses; //once synapses added, store here to visualize later
   private final Random _rand = new Random(4242);
 
@@ -55,7 +55,7 @@ public class SegmentUpdateInfo {
     _learningCells = new HashSet<Cell>();
     _addedSynapses = new HashSet<Synapse>();    
     _addNewSynapses = addNewSynapses;
-    _isSequence = false;
+    _numPredictionSteps = 1;
 
     Region region = cell.getRegion();
     Column ownColumn = cell.getColumn();
@@ -113,10 +113,12 @@ public class SegmentUpdateInfo {
   }
   
   /**
-   * Assign whether this segment update is creating a sequence segment or not.
+   * Define the number of time steps in the future an activation will occur
+   * in if this segment becomes active.  This is only necessary if this 
+   * segment update is creating a new segment.
    */
-  public void setSequence(boolean sequence) { 
-    _isSequence = sequence; 
+  public void setNumPredictionSteps(int numSteps) { 
+    _numPredictionSteps = numSteps; 
   }
   
   /**
@@ -149,7 +151,7 @@ public class SegmentUpdateInfo {
   Segment createCellSegment() {
     Segment segment = _cell.createSegment(_learningCells);
     segment.getSynapses(_addedSynapses);
-    segment.setSequence(_isSequence);
+    segment.setNumPredictionSteps(_numPredictionSteps);
     return segment;
   }
 
