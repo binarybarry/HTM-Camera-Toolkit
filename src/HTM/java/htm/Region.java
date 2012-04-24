@@ -100,6 +100,68 @@ public class Region {
    * otherwise use Numenta doc method of guassian centered on threshold.
    */
   public static boolean FULL_DEFAULT_SPATIAL_PERMANENCE = false;
+  
+  /**
+   *  Region initialization using hard-coded spatial pooler.  Hard-coded means
+   *  that input bits are mapped directly to columns.  In other words the normal
+   *  spatial pooler is disabled and we instead assume the input sparsification
+   *  has already been decided by some preprocessing code outside the Region.
+   *  It is then assumed (though not checked) that the input array will have
+   *  only a sparse number of "1" values that represent the active columns
+   *  for each time step.<p>
+   *  
+   *  With hardcoded the Region will create a matching number of Columns to
+   *  mirror the size of the input array.  Locality radius may still be
+   *  defined as it is still used by the temporal pooler.  If non-zero it will
+   *  restrict temporal segments from connecting further than r number of
+   *  columns away.
+   *
+   *  @param inputSizeX size of input data matrix from the external source.
+   *  @param inputSizeY size of input data matrix from the external source.
+   *  @param localityRadius Furthest number of columns away to allow distal synapses.
+   *  @param cellsPerCol Number of (temporal context) cells to use for each Column.
+   *  @param segActiveThreshold Number of active synapses to activate a segment.
+   *  @param newSynapseCount number of new distal synapses added if none activated during
+   *  learning.
+   *  @param inputData the array to be used for input data bits.  The contents
+   *  of this array must be externally updated between time steps (between
+   *  calls to Region.runOnce()).
+   */
+  public Region(int inputSizeX, int inputSizeY, int localityRadius,
+      int cellsPerCol, int segActiveThreshold, int newSynapseCount, 
+      byte[] inputData) {
+    _inputWidth = inputSizeX;
+    _inputHeight = inputSizeY;
+    _iters = 0;
+    _inputData = inputData;
+
+    _localityRadius = localityRadius;
+    _cellsPerCol = cellsPerCol;
+    _segActiveThreshold = segActiveThreshold;
+    _newSynapseCount = newSynapseCount;
+
+    _width = inputSizeX;
+    _height = inputSizeY;
+    _xSpace = 1.0;
+    _ySpace = 1.0;
+
+    //Create the columns based on the size of the input data to connect to.
+    _columns = new Column[_width*_height];
+    for(int cx=0; cx<_width; ++cx) {
+      for(int cy=0; cy<_height; ++cy) {
+        _columns[(cy*_height)+cx] = new Column(this, cx, cy, cx, cy);
+      }
+    }
+    
+    _pctInputPerCol = 1.0f / _columns.length;
+    _pctMinOverlap = 1.0f;
+    _pctLocalActivity = 1.0f;
+    _minOverlap = 1.0f;
+    _desiredLocalActivity = 1;
+    
+    setSpatialHardcoded(true);
+    setSpatialLearning(false);
+  }
 
   /**
    *  Region Initialization (from Numenta docs):
