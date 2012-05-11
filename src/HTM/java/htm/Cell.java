@@ -13,6 +13,7 @@ public class Cell extends AbstractCell {
   
   private final Column _column;
   private final int _index;
+  private final int _id;
   private boolean _isActive;
   private boolean _wasActive;
   private boolean _isPredicting;
@@ -40,6 +41,24 @@ public class Cell extends AbstractCell {
     _wasPredicted = false;
     _isLearning = false;
     _wasLearning = false;
+    int cpc = _column.getRegion().getCellsPerCol();
+    _id = (_column.cx()*cpc + _index) + 
+          (_column.cy()*cpc*_column.getRegion().getWidth());
+  }
+  
+  @Override
+  public int hashCode() {
+    return _id;
+  }
+  
+  @Override
+  public boolean equals(Object obj) {
+    if(obj instanceof Cell) {
+      Cell cell = (Cell)obj;
+      if(cell.getRegion()==getRegion())
+        return cell._id==_id;
+    }
+    return false;
   }
 
   public Region getRegion() {
@@ -74,6 +93,10 @@ public class Cell extends AbstractCell {
   @Override
   public int gridIndex() {
     return _column.gridIndex();
+  }
+  
+  public int getId() {
+    return _id;
   }
   
   /** Return the Cell's index position within its Column. */
@@ -159,6 +182,8 @@ public class Cell extends AbstractCell {
     _isActive = false;
     _isPredicting = false;
     _isLearning = false;
+    for(Segment seg : _segments)
+      seg.nextTimeStep();
   }
 
   /**
@@ -255,10 +280,8 @@ public class Cell extends AbstractCell {
       Segment segment, boolean newSynapses) {
     Set<Synapse> activeSyns = new HashSet<Synapse>();
     if(segment!=null) {
-      if(previous)
-        segment.getPrevActiveSynapses(activeSyns);
-      else
-        segment.getActiveSynapses(activeSyns);
+      activeSyns = previous ? segment.getPrevActiveSynapses() : 
+        segment.getActiveSynapses();
     }
 
     SegmentUpdateInfo segmentUpdate =

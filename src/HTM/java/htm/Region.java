@@ -149,7 +149,7 @@ public class Region {
     _columns = new Column[_width*_height];
     for(int cx=0; cx<_width; ++cx) {
       for(int cy=0; cy<_height; ++cy) {
-        _columns[(cy*_height)+cx] = new Column(this, cx, cy, cx, cy);
+        _columns[(cy*_width)+cx] = new Column(this, cx, cy, cx, cy);
       }
     }
     
@@ -1020,6 +1020,11 @@ public class Region {
     for(Column col : _columns) {
       for(int c=0; c<col.numCells(); ++c) {
         Cell cell = col.getCell(c);
+        
+        //process all segments on the cell to cache the activity for later
+        for(int s=0; s<cell.numSegments(); ++s)
+          cell.getSegment(s).processSegment();
+        
         for(int s=0; s<cell.numSegments(); ++s) {
           Segment seg = cell.getSegment(s);
           if(seg.isActive()) {
@@ -1218,6 +1223,11 @@ public class Region {
           Column col = _region._columns[i];
           for(int c=0; c<col.numCells(); ++c) {
             Cell cell = col.getCell(c);
+            
+            //process all segments on the cell to cache the activity for later
+            for(int s=0; s<cell.numSegments(); ++s)
+              cell.getSegment(s).processSegment();
+            
             for(int s=0; s<cell.numSegments(); ++s) {
               Segment seg = cell.getSegment(s);
               if(seg.isActive()) {

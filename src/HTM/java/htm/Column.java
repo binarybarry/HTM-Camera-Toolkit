@@ -62,6 +62,11 @@ public class Column {
    */
   Column(Region region, int srcPosX, int srcPosY, int posX, int posY) {
     _region = region;
+    _ix = srcPosX; //'input' row and col
+    _iy = srcPosY;
+    _cx = posX; //'column grid' row and col
+    _cy = posY;
+    
     int numCells = region.getCellsPerCol();
     _cells = new Cell[numCells];
     for(int i=0; i<numCells; ++i)
@@ -85,10 +90,6 @@ public class Column {
     _overlapDutyCycle = 1.0f;
 
     _overlap = 0; //the last computed input overlap for the Column.
-    _ix = srcPosX; //'input' row and col
-    _iy = srcPosY;
-    _cx = posX; //'column grid' row and col
-    _cy = posY;
   }
 
   public int ix() { return _ix; }

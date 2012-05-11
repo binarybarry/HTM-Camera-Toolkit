@@ -1,6 +1,8 @@
 package htm;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -23,6 +25,11 @@ public class Segment {
   private int _predictionSteps;
   private final float _segActiveThreshold;
   
+  private boolean _isActive;
+  private boolean _wasActive;
+  private Set<Synapse> _activeSynapses;
+  private Set<Synapse> _prevSynapses;
+  
   /**
    * Initialize a new Segment with the specified segment activation threshold.
    */
@@ -30,6 +37,42 @@ public class Segment {
     _synapses = new ArrayList<Synapse>();
     _isSequence = false;
     _segActiveThreshold = segActiveThreshold;
+    _isActive = false;
+    _wasActive = false;
+    _activeSynapses = new HashSet<Synapse>();
+    _prevSynapses = new HashSet<Synapse>();
+  }
+  
+  /**
+   * Advance this segment to the next time step.  The current state of this
+   * segment (active, number of synapes) will be set as the previous state and
+   * the current state will be reset to no cell activity by default until it
+   * can be determined.
+   */
+  void nextTimeStep() {
+    _wasActive = _isActive;
+    _isActive = false;
+    _prevSynapses.clear();
+    _prevSynapses.addAll(_activeSynapses);
+    _activeSynapses.clear();
+  }
+  
+  /**
+   * Process this segment for the current time step.  Processing will determine
+   * the set of active synapses on this segment for this time step.  From there
+   * we will determine if this segment is active if enough active synapses
+   * are present.  This information is then cached for the remainder of the
+   * Region's processing for the time step.  When a new time step occurs, the
+   * Region will call nextTimeStep() on all cells/segments to cache the 
+   * information as what was previously active.
+   */
+  public void processSegment() {
+    _activeSynapses.clear();
+    for(Synapse syn : _synapses) {
+      if(syn.isActive())
+        _activeSynapses.add(syn);
+    }
+    _isActive = _activeSynapses.size() >= _segActiveThreshold;
   }
   
   /**
@@ -40,7 +83,7 @@ public class Segment {
    * (something that will eventually happen).
    * @param sequence true to make the segment a sequence segment, false not.
    */
-  public void setSequence(boolean sequence) { 
+  private void setSequence(boolean sequence) { 
     _isSequence = sequence;
   }
   
@@ -140,15 +183,11 @@ public class Segment {
   }
 
   /**
-   *  Populate the set with all the currently active (firing) synapses on
-   *  this segment.
-   *  @param connectedOnly: only consider if active if a synapse is connected.
+   *  Return the set of all the currently active (connected and firing) 
+   *  synapses on this segment.
    */
-  public void getActiveSynapses(Set<Synapse> syns) {
-    for(Synapse syn : _synapses) {
-      if(syn.isActive())
-        syns.add(syn);
-    }
+  public Set<Synapse> getActiveSynapses() {
+    return Collections.unmodifiableSet(_activeSynapses);
   }
   
   /**
@@ -166,6 +205,9 @@ public class Segment {
    * synapses which are currently connected.
    */
   public int getActiveSynapseCount(boolean connectedOnly) {
+    if(connectedOnly)
+      return _activeSynapses.size();
+    
     int c=0;
     for(Synapse syn : _synapses) {
       if(syn.isActive(connectedOnly))
@@ -175,15 +217,11 @@ public class Segment {
   }
 
   /**
-   *  Populate the set with all the previously active (firing) synapses on
+   *  Return the set of all the previously active (firing) synapses on
    *  this segment.
-   *  @param connectedOnly: only consider if active if a synapse is connected.
    */
-  public void getPrevActiveSynapses(Set<Synapse> syns) {
-    for(Synapse syn : _synapses) {
-      if(syn.wasActive())
-        syns.add(syn);
-    }
+  public Set<Synapse> getPrevActiveSynapses() {
+    return Collections.unmodifiableSet(_prevSynapses);
   }
 
   /**
@@ -201,6 +239,9 @@ public class Segment {
    * synapses which are currently connected.
    */
   public int getPrevActiveSynapseCount(boolean connectedOnly) {
+    if(connectedOnly)
+      return _prevSynapses.size();
+    
     int c=0;
     for(Synapse syn : _synapses) {
       if(syn.wasActive(connectedOnly))
@@ -264,12 +305,7 @@ public class Segment {
    *  that are active due to active states at time t is greater than activationThreshold.
    */
   public boolean isActive() {
-    int c=0;
-    for(Synapse syn : _synapses) {
-      if(syn.isActive())
-        ++c;
-    }
-    return c >= _segActiveThreshold;
+    return _isActive;
   }
 
   /**
@@ -277,7 +313,7 @@ public class Segment {
    *  that were active due to active states at time t-1 is greater than activationThreshold.
    */
   public boolean wasActive() {
-    return getPrevActiveSynapseCount() >= _segActiveThreshold;
+    return _wasActive;
   }
 
   /**
