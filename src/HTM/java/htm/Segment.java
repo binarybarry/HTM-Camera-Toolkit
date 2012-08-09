@@ -55,6 +55,10 @@ public class Segment {
     _prevSynapses.clear();
     _prevSynapses.addAll(_activeSynapses);
     _activeSynapses.clear();
+    
+    //cache "wasConnected" for all synapses
+    for(Synapse syn : _synapses)
+      syn.nextTimeStep();
   }
   
   /**
@@ -69,6 +73,7 @@ public class Segment {
   public void processSegment() {
     _activeSynapses.clear();
     for(Synapse syn : _synapses) {
+      syn.processSynapse();
       if(syn.isActive())
         _activeSynapses.add(syn);
     }

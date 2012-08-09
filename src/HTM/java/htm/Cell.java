@@ -169,6 +169,20 @@ public class Cell extends AbstractCell {
     }
     return c;
   }
+  
+  /**
+   * Return the number of segments in this cell that match the number of
+   * predictionSteps. If pass in zero, return count of total segments regardless
+   * of predictionSteps.
+   */
+  int numCellSegments(int predictionSteps) {
+    int c=0;
+    for(Segment seg : _segments) {
+      if(seg.numPredictionSteps()==predictionSteps || predictionSteps==0)
+        c++;
+    }
+    return c;
+  }
 
   /**
    *  Advance this cell to the next time step. The current state of this cell

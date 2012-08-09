@@ -412,8 +412,17 @@ public class Region {
 
     ++_iters;
     if(DEBUG && _iters % 1000 == 0) {
-      long taken = (System.nanoTime()-_startTime) / 1000000000l;
-      System.out.println("Region iters: "+_iters+" ("+taken+" seconds)");
+      long taken = (System.nanoTime()-_startTime) / 1000000l;
+      System.out.println("Region iters: "+_iters+" ("+taken+" ms)");
+      
+      //print how many segments of particular counts that exist
+      int sn;
+      for(sn=0; sn<12; ++sn) {
+        int scn = numRegionSegments(sn);
+        System.out.print(""+sn+"("+scn+")  ");
+      }
+      System.out.print("\n");
+      
       _startTime = System.nanoTime();
     }
   }
@@ -521,6 +530,23 @@ public class Region {
       pctP = (float)sumAP / (float)sumP;
     result[0] = pctA;
     result[1] = pctP;
+  }
+  
+  /**
+   * Return the total number of segments in the Region that match the number of
+   * predictionSteps. If pass in zero, return count of total segments regardless
+   * of predictionSteps.
+   */
+  int numRegionSegments(int predictionSteps) {
+    int c=0, i,j;
+    for(i=0; i<_columns.length; ++i) {
+      Column col = _columns[i];
+      for(j=0; j<col.numCells(); ++j) {
+        Cell cell = col.getCell(j);
+        c += cell.numCellSegments(predictionSteps);
+      }
+    }
+    return c;
   }
   
   /**

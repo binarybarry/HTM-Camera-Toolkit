@@ -10,12 +10,14 @@ public class Synapse {
   
   private final AbstractCell _inputSource;
   private float _permanence;
+  private boolean _isConnected;
+  private boolean _wasConnected;
   
   //Global parameters that apply to all Region instances
   public static final float CONNECTED_PERM = 0.2f;    //Synapses with permanences above this value are connected.
   public static final float INITIAL_PERMANENCE = 0.3f;//initial permanence for distal synapses
   public static final float PERMANENCE_INC = 0.015f;  //Amount permanences of synapses are incremented in learning.
-  public static final float PERMANENCE_DEC = 0.005f;  //Amount permanences of synapses are decremented in learning.
+  public static final float PERMANENCE_DEC = 0.01f;  //Amount permanences of synapses are decremented in learning.
   
   /**
    * @param inputSource: object providing source of the input to this synapse
@@ -26,6 +28,28 @@ public class Synapse {
     _inputSource = inputSource;
     _permanence = permanence==0.0 ? 
         INITIAL_PERMANENCE : (float)Math.min(1.0,permanence);
+    _isConnected = false;
+    _wasConnected = false;
+  }
+  
+  /**
+   * Advance this synapse to the next time step.  The current state of this
+   * synapse (isConnected) will be set as the previous state and
+   * the current state will be reset to not connected by default until it
+   * can be determined.
+   */
+  void nextTimeStep() {
+    _wasConnected = _isConnected;
+    _isConnected = false;
+  }
+  
+  /**
+   * Process the synapse by calculating whether it is currently connected
+   * or not.  A synapse is connected if its permanence value is above the
+   * CONNECTED_PERM threshold.
+   */
+  void processSynapse() {
+    _isConnected = _permanence >= CONNECTED_PERM;
   }
   
   /**
@@ -49,7 +73,7 @@ public class Synapse {
    * @param connectedOnly: only consider if active if this synapse is connected.
    */
   public boolean isActive(boolean connectedOnly) {
-    return _inputSource.isActive() && (isConnected() || !connectedOnly);
+    return _inputSource.isActive() && (_isConnected || !connectedOnly);
   }
 
   /**
@@ -65,7 +89,7 @@ public class Synapse {
    * @param connectedOnly: only consider if active if this synapse is connected.
    */
   public boolean wasActive(boolean connectedOnly) {
-    return _inputSource.wasActive() && (isConnected() || !connectedOnly);
+    return _inputSource.wasActive() && (_wasConnected || !connectedOnly);
   }
 
   /**
