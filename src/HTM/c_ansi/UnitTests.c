@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <omp.h>
 #include "Region.h"
 
 #define MAX_FILE_SIZE (0x100000)
@@ -80,6 +81,24 @@ void testLanguage() {
     testRandomSubset(out, 3, 10, i);
 }
 
+void testOpenMP() {
+  printf("testOpenMP()...\n");
+  int i,j,k;
+  float a = 2.2f;
+  int N = 100000;
+  unsigned long time = clock();
+  for(i = 0; i < N; i++) {
+    /*#pragma omp parallel for*/
+    for(j = 0; j < N; j++) {
+      a *= 1.01;
+      a -= 1.09;
+    }
+  }
+  unsigned long elapse = clock() - time;
+  printf("a=%f  time %lu\n", a,elapse/1000);
+  printf("OK\n");
+}
+
 /**
  * Test the Synapse structure used within the HTM Region.
  */
@@ -93,7 +112,7 @@ void testSynapse() {
   cell.wasLearning = false;
 
   Synapse* syn = malloc(sizeof(Synapse));
-  initSynapse(syn, &cell, 0.2f);
+  initSynapse(syn, &cell, 2000);
   syn->isConnected = (syn->permanence >= CONNECTED_PERM);
 
   bool ia = isSynapseActive(syn, true);
@@ -104,7 +123,7 @@ void testSynapse() {
   if(wa) printf("Failed: wasSynapseActive expected false, got true.\n");
   if(wal) printf("Failed: wasSynapseActiveFromLearning expected false, got true.\n");
 
-  decreaseSynapsePermanence(syn, 0.0f);
+  decreaseSynapsePermanence(syn, 0);
   syn->isConnected = (syn->permanence >= CONNECTED_PERM);
 
   ia = isSynapseActive(syn, true);
@@ -349,6 +368,7 @@ void testRegionPerformance(unsigned int nunique) {
   srand(42);
 
   unsigned long time = clock();
+  double otime = omp_get_wtime();
 
   int i,j,r;
   for(i=0; i<=niters; ++i) {
@@ -377,7 +397,8 @@ void testRegionPerformance(unsigned int nunique) {
 
     if(i % 1000 == 0) {
       unsigned long elapse = clock() - time;
-      printf("iters %i: time %lu\n", i, elapse/1000);
+      double oelapse = omp_get_wtime() - otime;
+      printf("iters %i: time %f (%lu)\n", i, oelapse, elapse/1000);
 
       /*print how many segments of particular counts that exist*/
       int sn;
@@ -391,6 +412,7 @@ void testRegionPerformance(unsigned int nunique) {
       printf("acc  %f   %f\n", acc[0], acc[1]);*/
 
       time = clock();
+      otime = omp_get_wtime();
     }
   }
 
@@ -543,6 +565,7 @@ void testRegionPerformanceDickens() {
 
 int main(void) {
   /* Run selected tests for HTM below */
+  /*testOpenMP();*/
   testSynapse();
   testSegment();
   testRegion1();

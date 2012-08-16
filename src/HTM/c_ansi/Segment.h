@@ -30,7 +30,7 @@ typedef struct SegmentType {
 
   bool isSequence;
   int predictionSteps;
-  float segActiveThreshold;
+  int segActiveThreshold;
 
   bool isActive;
   bool wasActive;
@@ -53,7 +53,7 @@ void deleteSegment(Segment* seg);
 void nextSegmentTimeStep(Segment* seg);
 void processSegment(Segment* seg);
 void setNumPredictionSteps(Segment* seg, int steps);
-Synapse* createSynapse(Segment* seg, struct CellType* inputSource, float initPerm);
+Synapse* createSynapse(Segment* seg, struct CellType* inputSource, int initPerm);
 void adaptSegmentPermanences(Segment* seg);
 void updateSegmentPermanences(Segment* seg, bool increase);
 bool wasSegmentActiveFromLearning(Segment* seg);

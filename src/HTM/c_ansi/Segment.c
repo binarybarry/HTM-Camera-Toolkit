@@ -84,10 +84,14 @@ void processSegment(Segment* seg) {
      Synapse* syn = &(seg->synapses[i]);
      syn->isConnected = (syn->permanence >= CONNECTED_PERM);
 
-    if(isSynapseActive(syn, true))
+    if(syn->inputSource->isActive) {
+      nc += syn->isConnected;
+      na++;
+    }
+    /*if(isSynapseActive(syn, true))
       ++nc;
     if(isSynapseActive(syn, false))
-      ++na;
+      ++na;*/
   }
 
   seg->numActiveConnectedSyns = nc;
@@ -117,7 +121,7 @@ void setNumPredictionSteps(Segment* seg, int steps) {
  * @param inputSource: the input source of the synapse to create.
  * @return the newly created synapse.
  */
-Synapse* createSynapse(Segment* seg, Cell* inputSource, float initPerm) {
+Synapse* createSynapse(Segment* seg, Cell* inputSource, int initPerm) {
   /*if synapse array is full, need to increase capacity to add more*/
   if(seg->numSynapses == seg->allocatedSynapses) {
     int newAllocation = seg->allocatedSynapses*2;
@@ -140,9 +144,9 @@ void adaptSegmentPermanences(Segment* seg) {
   for(i=0; i<seg->numSynapses; ++i) {
     Synapse* syn = &(seg->synapses[i]);
     if(isSynapseActive(syn, true))
-      increaseSynapsePermanence(syn, 0.0f);
+      increaseSynapsePermanence(syn, 0);
     else
-      decreaseSynapsePermanence(syn, 0.0f);
+      decreaseSynapsePermanence(syn, 0);
   }
 }
 
@@ -155,9 +159,9 @@ void updateSegmentPermanences(Segment* seg, bool increase) {
   for(i=0; i<seg->numSynapses; ++i) {
     Synapse* syn = &(seg->synapses[i]);
     if(increase)
-      increaseSynapsePermanence(syn, 0.0f);
+      increaseSynapsePermanence(syn, 0);
     else
-      decreaseSynapsePermanence(syn, 0.0f);
+      decreaseSynapsePermanence(syn, 0);
   }
 }
 

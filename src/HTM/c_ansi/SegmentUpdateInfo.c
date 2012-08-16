@@ -244,13 +244,12 @@ void updateInfoPermanences(SegmentUpdateInfo* info) {
   unsigned int i;
   for(i = 0; i<segment->numSynapses; ++i) {
     Synapse* syn = &(segment->synapses[i]);
-    decreaseSynapsePermanence(syn, 0.0f);
+    decreaseSynapsePermanence(syn, 0);
   }
 
   for(i=0; i<info->numActiveSyns; ++i) {
     Synapse* syn = &(segment->synapses[info->activeSynapseIDs[i]]);
-    increaseSynapsePermanence(syn, 0.0f);
-    increaseSynapsePermanence(syn, 0.0f);/*TODO one call for both...*/
+    increaseSynapsePermanence(syn, PERMANENCE_INC*2);
   }
 }
 
@@ -263,7 +262,7 @@ void decreaseInfoPermanences(SegmentUpdateInfo* info) {
   int i;
   for(i=0; i<info->numActiveSyns; ++i) {
     Synapse* syn = &(segment->synapses[info->activeSynapseIDs[i]]);
-    decreaseSynapsePermanence(syn, 0.0f);
+    decreaseSynapsePermanence(syn, 0);
   }
 }
 

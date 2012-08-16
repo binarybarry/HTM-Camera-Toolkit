@@ -14,12 +14,15 @@
 #include <math.h>
 #include "Cell.h"
 
+#define min(X, Y)  ((X) < (Y) ? (X) : (Y))
+#define max(X, Y)  ((X) > (Y) ? (X) : (Y))
+
 /**
  * @param inputSource: object providing source of the input to this synapse
  * (either a Column's Cell or a special InputCell.
  * @param permanence: the synapses's initial permanence value (0.0-1.0).
  */
-void initSynapse(Synapse* syn, Cell* inputSource, float permanence) {
+void initSynapse(Synapse* syn, Cell* inputSource, int permanence) {
   syn->permanence = permanence;
   syn->inputSource = inputSource;
   syn->isConnected = false;
@@ -53,17 +56,17 @@ bool wasSynapseActiveFromLearning(Synapse* syn) {
 /**
  * Increases the permanence of this synapse.
  */
-void increaseSynapsePermanence(Synapse* syn, float amount) {
-  if(amount==0.0f)
+void increaseSynapsePermanence(Synapse* syn, int amount) {
+  if(amount==0)
     amount = PERMANENCE_INC;
-  syn->permanence = fminf(1.0f, syn->permanence+amount);
+  syn->permanence = min(10000, syn->permanence+amount);
 }
 
 /**
  * Decreases the permanence of this synapse.
  */
-void decreaseSynapsePermanence(Synapse* syn, float amount) {
-  if(amount==0.0f)
+void decreaseSynapsePermanence(Synapse* syn, int amount) {
+  if(amount==0)
     amount = PERMANENCE_DEC;
-  syn->permanence = fmaxf(0.0f, syn->permanence-amount);
+  syn->permanence = max(0, syn->permanence-amount);
 }
