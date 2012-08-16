@@ -332,7 +332,7 @@ Region* newRegion(int inputSizeX, int inputSizeY, int colGridSizeX, int colGridS
     printf("\ndesiredLocalActivity = %d", region->desiredLocalActivity);
     printf("\nsynapsesPerProximalSegment = %d", synapsesPerSegment);
     printf("\nminOverlap = %g", region->minOverlap);
-    printf("\nconPerm,permInc = %f %f\n", CONNECTED_PERM, PERMANENCE_INC);
+    printf("\nconPerm,permInc = %i %i\n", CONNECTED_PERM, PERMANENCE_INC);
     /*printf("outputGrid = ", outData.shape);*/
   }
 
@@ -618,12 +618,14 @@ void performTemporalPooling(Region* region) {
   //39.     sUpdate = getSegmentActiveSynapses (c, i, s, t-1, true)
   //40.     sUpdate.sequenceSegment = true
   //41.     segmentUpdateList.add(sUpdate)*/
-  int i,c,s;
+  int i;
+  #pragma omp parallel for
   for(i=0; i<region->numCols; ++i) {
     Column* col = &(region->columns[i]);
     if(col->isActive) {
       bool buPredicted = false;
       bool learningCellChosen = false;
+      int c;
       for(c=0; c<col->numCells; ++c) {
         Cell* cell = &(col->cells[c]);
         if(cell->wasPredicted) {
@@ -691,7 +693,9 @@ void performTemporalPooling(Region* region) {
   //51.       predUpdate = getSegmentActiveSynapses(
   //52.                                   c, i, predSegment, t-1, true)
   //53.       segmentUpdateList.add(predUpdate)*/
+  #pragma omp parallel for
   for(i=0; i<region->numCols; ++i) {
+    int c,s;
     for(c=0; c<region->columns[i].numCells; ++c) {
       Cell* cell = &(region->columns[i].cells[c]);
 
@@ -743,7 +747,9 @@ void performTemporalPooling(Region* region) {
   //60.     segmentUpdateList(c, i).delete()*/
   if(!region->temporalLearning)
     return;
+  #pragma omp parallel for
   for(i=0; i<region->numCols; ++i) {
+    int c;
     for(c=0; c<region->columns[i].numCells; ++c) {
       Cell* cell = &(region->columns[i].cells[c]);
       if(cell->isLearning) {
@@ -766,6 +772,7 @@ void runOnce(Region* region) {
   //    std::cout << "Max Threads: " << boost::thread::hardware_concurrency() << "\n";
   //  }*/
   int i;
+  #pragma omp parallel for
   for(i=0; i<region->numCols; ++i)
     nextColumnTimeStep(&(region->columns[i]));
 
