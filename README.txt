@@ -1,6 +1,10 @@
 The HTM Camera Toolkit is a research application that allows easy experimentation of Numenta's Hierarchical Temporal Memory (HTM) algorithms using real world video input from a camera/webcam.  
 
-The Camera Toolkit runs a Python implementation of the HTM algorithm however I also have C++ and Java implementations.  These are not currently hooked into the Camera Toolkit app.  I have been using them to experiment with other environments to compare performance (C++) and ease of access with other supporting tools (Swing+Hadoop in Java).  Both should be usable if you are interested in running the HTM algorithm code in your own research projects (note: the C++ version only has a partially implemented spatial pooler; Java should be complete).
+The Camera Toolkit runs a Python implementation of the HTM algorithm however I also have ANSI-C, C++, and Java implementations.  These are not currently hooked into the Camera Toolkit app.  I have been using them to experiment with other environments to compare performance (ANSI C, C++) and ease of access with other supporting tools (Swing+Hadoop in Java).  Both should be usable if you are interested in running the HTM algorithm code in your own research projects (note: the C++ version only has a partially implemented spatial pooler; ANSI C and Java should be complete).
+
+The ANSI C version of HTM is my most recent work (as of Aug/Sept 2012).  As my experiments progressed it became clear that the ability to scale up to larger and longer data sets is very important.  Thus I needed a new implementation that was focused on optimizing for performance from the very start.  The ANSI C implementation has only minimal use of the
+standard library as well as an optional dependence on OpenMP to enable parallel code.  This version does not include any UI front end for visualization.  Instead I have a suite of unit tests, performance tests, and examples.  If you are a researcher interested in HTM please take a look at this version if you can.  I will also be updating it the most going forward.
+
 
 Also included in this project is my HMAX Camera Toolkit.  This is another research application that implements the HMAX computer vision algorithm.  This toolkit allows training multiple classes of objects using video input and later classifying subsequent video input frames as one of the several trained classes.
 
