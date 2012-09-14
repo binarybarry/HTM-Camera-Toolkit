@@ -152,6 +152,9 @@ Cell* getBestMatchingCell(Column* col, Segment** bestSegPtr, int* segmentID,
  * overlap score to zero.
  */
 void computeOverlap(Column* col) {
+  /*Calculate number of active synapses on the proximal segment*/
+  processSegment(col->proximalSegment);
+
   int overlap = col->proximalSegment->numActiveConnectedSyns;
   if(overlap < col->region->minOverlap)
     overlap = 0;
@@ -167,15 +170,29 @@ void computeOverlap(Column* col) {
  * otherwise it is decremented. Permanence values are constrained to be between 0 and 1.
  */
 void updateColumnPermanences(Column* col) {
-  adaptSegmentPermanences(col->proximalSegment);
+  /*consider all potential synapses, not just connected ones.  this will
+   * allow disconnected synapses to regain a connected if they are part
+   * of a group of synapses making the column active.*/
+  int i;
+  Segment* seg = col->proximalSegment;
+  for(i=0; i<seg->numSynapses; ++i) {
+    Synapse* syn = &(seg->synapses[i]);
+    if(isSynapseActive(syn, false))
+      increaseSynapsePermanence(syn, 0);
+    else
+      decreaseSynapsePermanence(syn, 0);
+  }
 }
 
 /**
- * Increase the permanence value of every synapse in this column by a scale factor.
+ * Increase the permanence value of every synapse in this column by the given amount.
  */
-void increasePermanences(Column* col, float scale) {
-  /*TODO consider scale parameter?*/
-  updateSegmentPermanences(col->proximalSegment, true);
+void increasePermanences(Column* col, int amount) {
+  int i;
+  Segment* seg = col->proximalSegment;
+  for(i=0; i<seg->numSynapses; ++i) {
+    increaseSynapsePermanence(&(seg->synapses[i]), amount);
+  }
 }
 
 /**
@@ -203,10 +220,10 @@ void updateOverlapDutyCycle(Column* col) {
 }
 
 /**
- *  Returns the boost value of this column. The boost value is a scalar >= 1.
- *  If activeDutyCyle(c) is above minDutyCycle(c), the boost value is 1.
- *  The boost increases linearly once the column's activeDutyCycle starts
- *  falling below its minDutyCycle.
+ * Returns the boost value of this column. The boost value is a scalar >= 1.
+ * If activeDutyCyle(c) is above minDutyCycle(c), the boost value is 1.
+ * The boost increases linearly once the column's activeDutyCycle starts
+ * falling below its minDutyCycle.
  */
 float boostFunction(Column* col, float minDutyCycle) {
   if(col->activeDutyCycle > minDutyCycle)
@@ -226,8 +243,7 @@ float boostFunction(Column* col, float minDutyCycle) {
  * Note: once learning is turned off, boost(c) is frozen.
  */
 void performBoosting(Column* col) {
-  /*std::vector<Column*> neighborCols;
-  //_region->neighbors(neighborCols, this);*/
+  /*find extents of neighboring columns within inhibitionRadius*/
   Region* region = col->region;
   int irad = round(region->inhibitionRadius);
   int x0 = max(0, min(col->cx-1, col->cx-irad));
@@ -238,26 +254,27 @@ void performBoosting(Column* col) {
   x1 = min(region->width, x1+1); /*extra 1's for correct looping*/
   y1 = min(region->height, y1+1);
 
-  /*minDutyCycle(c) A variable representing the minimum desired firing rate
-  //for a cell. If a cell's firing rate falls below this value, it will be
-  //boosted. This value is calculated as 1% of the maximum firing rate of
-  //its neighbors.*/
+  /*find the maxDutyCycle of all columns within inhibitionRadius*/
   float maxDuty = 0.0;
   int x, y;
   for(x=x0; x<x1; ++x) {
     for(y=y0; y<y1; ++y) {
-      Column* col = &(region->columns[(y*region->height)+x]);
+      Column* col = &(region->columns[(y*region->width)+x]);
       if(col->activeDutyCycle > maxDuty)
         maxDuty = col->activeDutyCycle;
     }
   }
 
-  float minDutyCycle = 0.01 * maxDuty;/*maxDutyCycle(neighborCols);*/
+  /*minDutyCycle(c) A variable representing the minimum desired firing rate
+    for a cell. If a cell's firing rate falls below this value, it will be
+    boosted. This value is calculated as 1% of the maximum firing rate of
+    its neighbors.*/
+  float minDutyCycle = 0.01 * maxDuty;
   updateActiveDutyCycle(col);
   col->boost = boostFunction(col, minDutyCycle);
 
   updateOverlapDutyCycle(col);
   if(col->overlapDutyCycle < minDutyCycle)
-    increasePermanences(col, 0.1*CONNECTED_PERM);
+    increasePermanences(col, CONNECTED_PERM/40);
 }
 

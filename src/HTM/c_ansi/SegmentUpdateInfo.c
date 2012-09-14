@@ -22,11 +22,11 @@
 
 /**
  * Randomly sample m values from the Cell array of length n (m < n).
- * Runs in O(2m) worst case time.  Result is returned as a newly allocated
+ * Runs in O(2m) worst case time.  Result is written to the ssCells
  * array of length m containing the randomly chosen pointers.
  */
-Cell** randomSample(Cell** cells, int n, int m) {
-  Cell** ss = malloc(m * sizeof(Cell*));
+void randomSample(Cell** cells, int n, Cell** ssCells, int m) {
+  Cell** ss = ssCells;
   int i, j, k;
   for(i=n-m, k=0; i<n; ++i, ++k) {
     int pos = rand() % (i+1);
@@ -46,7 +46,6 @@ Cell** randomSample(Cell** cells, int n, int m) {
     else
       ss[k] = item;
   }
-  return ss;
 }
 
 /**
@@ -172,7 +171,8 @@ void initSegmentUpdateInfo(SegmentUpdateInfo* info, Cell* cell, int segmentID,
   /*randomly choose synCount learning cells to add connections to*/
   info->numLearningCells = synCount;
   if(numLearnCells > 0 && synCount > 0) {
-    Cell** ss = randomSample(learningCells, numLearnCells, synCount);
+    Cell** ss = malloc(synCount * sizeof(Cell*));
+    randomSample(learningCells, numLearnCells, ss, synCount);
     info->learningCells = ss;
   }
 

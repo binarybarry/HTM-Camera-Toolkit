@@ -136,21 +136,6 @@ Synapse* createSynapse(Segment* seg, Cell* inputSource, int initPerm) {
 }
 
 /**
- * Update all permanence values of each synapse based on current activity.
- * If a synapse is active, increase its permanence, else decrease it.
- */
-void adaptSegmentPermanences(Segment* seg) {
-  int i;
-  for(i=0; i<seg->numSynapses; ++i) {
-    Synapse* syn = &(seg->synapses[i]);
-    if(isSynapseActive(syn, true))
-      increaseSynapsePermanence(syn, 0);
-    else
-      decreaseSynapsePermanence(syn, 0);
-  }
-}
-
-/**
  * Update (increase or decrease) all permanence values of each synapse on
  * this segment.
  */

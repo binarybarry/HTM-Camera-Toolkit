@@ -12,6 +12,7 @@
 #include "SegmentUpdateInfo.h"
 
 typedef struct CellType {
+  struct RegionType* region;
   struct ColumnType* column;
   int index;
   int id;
@@ -45,6 +46,7 @@ typedef struct CellType {
 } Cell;
 
 void initCell(Cell* cell, struct ColumnType* column, int index);
+void initInputCell(Cell* cell, struct RegionType* region, int index);
 void deleteCell(Cell* cell);
 void setCellPredicting(Cell* cell, bool predicting);
 int numCellSegments(Cell* cell, int predictionSteps);

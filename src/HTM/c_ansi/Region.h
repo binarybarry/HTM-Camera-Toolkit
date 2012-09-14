@@ -24,6 +24,7 @@ typedef struct RegionType {
   float pctMinOverlap;
   float pctLocalActivity;
 
+  bool spatialHardcoded;
   bool spatialLearning;
   bool temporalLearning;
 
@@ -39,6 +40,7 @@ typedef struct RegionType {
 
   char* inputData;
   int nInput;
+  Cell* inputCells;
   int iters;
 } Region;
 
@@ -48,10 +50,11 @@ Region* newRegionHardcoded(int inputSizeX, int inputSizeY, int localityRadius,
 Region* newRegion(int inputSizeX, int inputSizeY, int colGridSizeX, int colGridSizeY,
     float pctInputPerCol, float pctMinOverlap, int localityRadius,
     float pctLocalActivity, int cellsPerCol, int segActiveThreshold,
-    int newSynapseCount);
+    int newSynapseCount, char* inputData);
 void deleteRegion(Region* region);
 void getLastAccuracy(Region* region, float* result);
 int numRegionSegments(Region* region, int predictionSteps);
+int numRegionActiveColumns(Region* region);
 void runOnce(Region* region);
 
 void performSpatialPooling(Region* region);

@@ -12,10 +12,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include <omp.h>
 #include "Region.h"
 
 #define MAX_FILE_SIZE (0x100000)
+#define DEBUG 1
 
 typedef struct ObjType {
   int a;
@@ -316,18 +316,136 @@ void testRegion2() {
       if(k>1 || (k==1 && i>=1)) {
         /*after 1 full sequence presented, we expect 100% accuracy*/
         if(acc[0]!=1.0f && acc[1]!=1.0f) {
-          printf("Failed: testRegion2 expect 100%% acc (%i %i), got %f, %f",
+          printf("Failed: testRegion2 expect 100%% acc (%i %i), got %f, %f\n",
               k, i, acc[0],acc[1]);
         }/*printf("k%i i%i:  aAcc=%f  pAcc=%f\n", k, i, acc[0], acc[1]);*/
       }
       else {
         /*before that we expect 0% accuracy*/
         if(acc[0]!=0.0f && acc[1]!=0.0f) {
-          printf("Failed: testRegion2 expect 0%% acc (%i %i), got %f, %f",
+          printf("Failed: testRegion2 expect 0%% acc (%i %i), got %f, %f\n",
               k, i, acc[0],acc[1]);
         }
       }
     }
+  }
+
+  deleteRegion(region);
+  free(region);
+
+  printf("OK\n");
+}
+
+/**
+ * This test creates a Region of size 32x32 columsn that accepts a larger
+ * input of size 128x128.  Each input has a 128x128 sparse bit representation with about
+ * 5% of the bits active.  This example is much closer to a Region that works on
+ * real world sized data.  It tests the ability of the spatial pooler to produce a
+ * sparse represenation in a 32x32 column grid from a much larger 128x128 input array.
+ */
+void testRegion3() {
+  printf("testRegion3()...\n");
+
+  int i,j,k;
+  int iters = 0;
+  int dataSize = 16384;
+
+  float acc[2];
+  char* data = malloc(dataSize * sizeof(char));
+
+  int inputSizeX = 128; /*input data is size 10x10*/
+  int inputSizeY = 128;
+  int colGridSizeX = 32;/*region's column grid is size 5x5*/
+  int colGridSizeY = 32;
+  float pctInputPerCol = 0.01; /*each column connects to 1% random input bits*/
+  float pctMinOverlap = 0.07;  /*8% (13) of column bits at minimum to be active*/
+  int localityRadius = 0;      /*columns can connect anywhere within input*/
+  float pctLocalActivity = 0.5;/*half of columns within radius inhibited*/
+  int cellsPerCol = 4;
+  int segActiveThreshold = 10;
+  int newSynapseCount = 10;
+
+  Region* region = newRegion(inputSizeX, inputSizeY, colGridSizeX, colGridSizeY,
+        pctInputPerCol, pctMinOverlap, localityRadius, pctLocalActivity, cellsPerCol,
+        segActiveThreshold, newSynapseCount, data);
+  region->temporalLearning = true;
+
+  for(k=0; k<10; ++k) {
+    for(i=0; i<10; ++i) {
+      iters++;
+      /*data will contain a 128x128 bit representation*/
+      for(j=0; j<dataSize; ++j) /*reset all data to 0*/
+        data[j] = 0;
+      for(j=0; j<dataSize/10; ++j) /*assign next 10% set to 1's*/
+        data[(i*(dataSize/10))+j] = 1;
+
+      runOnce(region);
+
+      getLastAccuracy(region, acc);
+      if(DEBUG)
+        printf("\niter%i  Acc: %f  %f", iters, acc[0], acc[1]);
+
+      int nc = numRegionActiveColumns(region);
+      if(DEBUG)
+        printf(" nc:%d", nc);
+    }
+    if(DEBUG)
+      printf("\n");
+  }
+  if(DEBUG)
+    printf("total iters = %i\n", iters);
+
+  deleteRegion(region);
+  free(region);
+
+  printf("OK\n");
+}
+
+/**
+ * This test creates a small Region of size 5x5 that is connected to an
+ * input of size 10x10.  The input has 10% (10) elements active per time
+ * step.
+ */
+void testRegionSpatialPooling1() {
+  printf("testRegionSpatialPooling1()...\n");
+
+  int inputSizeX = 10; /*input data is size 10x10*/
+  int inputSizeY = 10;
+  int colGridSizeX = 5;/*region's column grid is size 5x5*/
+  int colGridSizeY = 5;
+  float pctInputPerCol = 0.05; /*each column connects to 5 random input bits*/
+  float pctMinOverlap = 0.2;   /*20% (1) of column bits at minimum to be active*/
+  int localityRadius = 0;      /*columns can connect anywhere within input*/
+  float pctLocalActivity = 1;  /*half of columns within radius inhibited*/
+  int cellsPerCol = 1; /*last 3 params only relevant when temporal learning enabled*/
+  int segActiveThreshold = 1;
+  int newSynapseCount = 1;
+
+  float acc[2];
+  char* data = malloc(100 * sizeof(char));
+
+  Region* region = newRegion(inputSizeX, inputSizeY, colGridSizeX, colGridSizeY,
+      pctInputPerCol, pctMinOverlap, localityRadius, pctLocalActivity, cellsPerCol,
+      segActiveThreshold, newSynapseCount, data);
+  region->temporalLearning = false;
+
+  /*create a sequence of length 10.  repeat it 10 times and check region accuracy. */
+  int i,j,k;
+  for(k=0; k<10; ++k) {
+    for(i=0; i<10; ++i) {
+      for(j=0; j<100; ++j) /*reset all data to 0*/
+        data[j] = 0;
+      for(j=0; j<10; ++j) /*assign next set of 10 to 1's*/
+        data[(i*10)+j] = 1;
+
+      runOnce(region);
+
+      int nc = numRegionActiveColumns(region);
+      if(DEBUG)
+        printf(" %d", nc);
+    }
+    if(DEBUG)
+      printf("   rad=%f\n", region->inhibitionRadius);
   }
 
   deleteRegion(region);
@@ -368,7 +486,7 @@ void testRegionPerformance(unsigned int nunique) {
   srand(42);
 
   unsigned long time = clock();
-  double otime = omp_get_wtime();
+  double otime = 0;/*omp_get_wtime();*/
 
   int i,j,r;
   for(i=0; i<=niters; ++i) {
@@ -397,7 +515,7 @@ void testRegionPerformance(unsigned int nunique) {
 
     if(i % 1000 == 0) {
       unsigned long elapse = clock() - time;
-      double oelapse = omp_get_wtime() - otime;
+      double oelapse = 1;/*omp_get_wtime() - otime;*/
       printf("iters %i: time %f (%lu)\n", i, oelapse, elapse/1000);
 
       /*print how many segments of particular counts that exist*/
@@ -412,7 +530,7 @@ void testRegionPerformance(unsigned int nunique) {
       printf("acc  %f   %f\n", acc[0], acc[1]);*/
 
       time = clock();
-      otime = omp_get_wtime();
+      /*otime = omp_get_wtime();*/
     }
   }
 
@@ -570,9 +688,11 @@ int main(void) {
   testSegment();
   testRegion1();
   testRegion2();
+  testRegionSpatialPooling1();
   /*testRegionPerformance(10);*/
-  testRegionPerformance(0);
+  /*testRegionPerformance(0);*/
   /*testRegionPerformanceDickens();*/
+  testRegion3();
 
 	return EXIT_SUCCESS;
 }

@@ -9,6 +9,7 @@
 #define SYNAPSE_H_
 
 /* Global parameters that apply to all Region instances */
+#define MAX_PERM 10000 /* Maximum/full permanence value */
 #define CONNECTED_PERM 2000 /* Synapses with permanences above this value are connected. */
 #define INITIAL_PERMANENCE 3000 /*initial permanence for distal synapses*/
 #define PERMANENCE_INC 150 /*Amount permanences of synapses are incremented in learning*/

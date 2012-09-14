@@ -14,8 +14,8 @@
 int MIN_SYNAPSES_PER_SEGMENT_THRESHOLD = 1;
 
 /**
- * Initialize the given Cell by defining its parent Column and index position
- * within that column.
+ * Initialize the given standard Cell by defining its parent Column and
+ * index position within that column.
  */
 void initCell(Cell* cell, Column* column, int index) {
   cell->column = column;
@@ -36,10 +36,42 @@ void initCell(Cell* cell, Column* column, int index) {
   cell->allocatedSegUpdates = 5;
   cell->segmentUpdates = malloc(cell->allocatedSegUpdates * sizeof(SegmentUpdateInfo));
 
-  Region* region = column->region;
-  int cpc = region->cellsPerCol;
+  cell->region = column->region;
+  int cpc = cell->region->cellsPerCol;
   cell->id = (column->cx*cpc + index) +
-             (column->cy*cpc*region->width);
+             (column->cy*cpc*cell->region->width);
+}
+
+/**
+ * Initialize the given Cell as an InputCell.  An input cell is one that is directly
+ * connected to the input data used by the first Region in the hierarchy.
+ * This type of cell does not use the isPredicting or isLearning states, nor does it
+ * use segment updates.
+ * @param index the array index within the input data of the region that this
+ * input cell is 'connected' to.
+ */
+void initInputCell(Cell* cell, Region* region, int index) {
+  cell->region = region;
+  cell->column = NULL;
+  cell->index = index;
+
+  cell->isActive = false;
+  cell->wasActive = false;
+  cell->isPredicting = false;
+  cell->wasPredicted = false;
+  cell->isLearning = false;
+  cell->wasLearning = false;
+  cell->predictionSteps = 0;
+
+  cell->numSegments = 0;
+  cell->allocatedSegments = 0;
+  cell->segments = NULL;
+
+  cell->numSegUpdates = 0;
+  cell->allocatedSegUpdates = 0;
+  cell->segmentUpdates = NULL;
+
+  cell->id = 0;
 }
 
 /**

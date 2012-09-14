@@ -59,7 +59,7 @@ bool wasSynapseActiveFromLearning(Synapse* syn) {
 void increaseSynapsePermanence(Synapse* syn, int amount) {
   if(amount==0)
     amount = PERMANENCE_INC;
-  syn->permanence = min(10000, syn->permanence+amount);
+  syn->permanence = min(MAX_PERM, syn->permanence+amount);
 }
 
 /**

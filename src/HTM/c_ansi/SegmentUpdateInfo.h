@@ -27,6 +27,7 @@ typedef struct SegmentUpdateInfoType {
   int allocatedAddedSyns;*/
 } SegmentUpdateInfo;
 
+void randomSample(struct CellType** cells, int n, struct CellType** ssCells, int m);
 void initSegmentUpdateInfo(SegmentUpdateInfo* info, struct CellType* cell,
     int segmentID, bool previous, bool addNewSynapses);
 void deleteSegmentUpdateInfo(SegmentUpdateInfo* info);

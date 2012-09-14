@@ -46,7 +46,7 @@
  *     valid to not valid, and vice-versa.
  *
  *  Created on: Jul 21, 2012
- *      Author: barry
+ *      Author: Barry Maturkanich
  */
 
 #include <math.h>
@@ -55,7 +55,7 @@
 #include "Region.h"
 
 bool DEBUG = true;
-bool HARDCODE_SPATIAL = true;
+bool FULL_DEFAULT_SPATIAL_PERMANENCE = false;
 
 /**
  * The radius of the average connected receptive field size of all the columns.
@@ -75,9 +75,11 @@ float averageReceptiveFieldSize(Region* region) {
     for(j=0; j<seg->numSynapses; ++j) {
       Synapse* syn = &(seg->synapses[j]);
       if(syn->isConnected) {
-        /*TODO need syn->inputCell->ix() from proximal cell, not distal cell*/
-        double dx = col->ix - col->cx;/*syn->inputSource->ix()*/
-        double dy = col->iy - col->cy;/*syn.getCellIY();*/
+        /*extract the x/y components of the input cell based on index*/
+        double synx = syn->inputSource->index / region->inputWidth;
+        double syny = syn->inputSource->index % region->inputWidth;
+        double dx = col->ix - synx; /*column input x position - cell input x*/
+        double dy = col->iy - syny;
         double d = sqrt(dx*dx + dy*dy);
         sum += (d / region->xSpace);
         n++;
@@ -112,11 +114,14 @@ float averageReceptiveFieldSize(Region* region) {
  * @param inputData the array to be used for input data bits.  The contents
  *  of this array must be externally updated between time steps (between
  *  calls to Region.runOnce()).
+ * @return a pointer to a newly allocated Region structure (NULL if any malloc calls
+ *  have failed).
  */
 Region* newRegionHardcoded(int inputSizeX, int inputSizeY, int localityRadius,
     int cellsPerCol, int segActiveThreshold, int newSynapseCount,
     char* inputData) {
   Region* region = malloc(sizeof(Region));
+  if(region==NULL) return NULL;
 
   region->inputWidth = inputSizeX;
   region->inputHeight = inputSizeY;
@@ -136,7 +141,8 @@ Region* newRegionHardcoded(int inputSizeX, int inputSizeY, int localityRadius,
   /*Create the columns based on the size of the input data to connect to.*/
   region->numCols = region->width * region->height;
   region->columns = malloc(region->numCols * sizeof(Column));
-  /*TODO check for NULL on allocation fail*/
+  if(region->columns==NULL) return NULL;
+
   int cx,cy;
   for(cx=0; cx<region->width; ++cx) {
     for(cy=0; cy<region->height; ++cy) {
@@ -151,7 +157,7 @@ Region* newRegionHardcoded(int inputSizeX, int inputSizeY, int localityRadius,
   region->minOverlap = 1.0f;
   region->desiredLocalActivity = 1;
 
-  /*region->spatialHardcoded = true; TODO*/
+  region->spatialHardcoded = true;
   region->spatialLearning = false;
   region->temporalLearning = true;
 
@@ -186,25 +192,31 @@ Region* newRegionHardcoded(int inputSizeX, int inputSizeY, int localityRadius,
  * @param pctInputPerCol: Percent of input bits each Column has potential synapses for.
  * @param pctMinOverlap: Minimum percent of column's synapses for column to be considered.
  * @param localityRadius: Furthest number of columns away to allow distal synapses.
- * @param pctLocalActivity: Approximate percent of Columns within locality radius to be
- *  winners after inhibition.
+ * @param pctLocalActivity: Approximate percent of Columns within average receptive
+ *  field radius to be winners after inhibition.
  * @param cellsPerCol: Number of (temporal context) cells to use for each Column.
  * @param segActiveThreshold: Number of active synapses to activate a segment.
  * @param newSynapseCount: number of new distal synapses added if none activated during
  *  learning.
+ * @param inputData the array to be used for input data bits.  The contents
+ *  of this array must be externally updated between time steps (between
+ *  calls to Region.runOnce()).
+ * @return a pointer to a newly allocated Region structure (NULL if any malloc calls
+ *  have failed).
  */
 Region* newRegion(int inputSizeX, int inputSizeY, int colGridSizeX, int colGridSizeY,
     float pctInputPerCol, float pctMinOverlap, int localityRadius,
     float pctLocalActivity, int cellsPerCol, int segActiveThreshold,
-    int newSynapseCount) {
-  printf("Constructing Region...\n");
+    int newSynapseCount, char* inputData) {
 
   Region* region = malloc(sizeof(Region));
+  if(region==NULL) return NULL;
 
   region->inputWidth = inputSizeX;
   region->inputHeight = inputSizeY;
   region->nInput = region->inputWidth * region->inputHeight;
   region->iters = 0;
+  region->inputData = inputData;
 
   region->localityRadius = localityRadius;
   region->cellsPerCol = cellsPerCol;
@@ -215,7 +227,8 @@ Region* newRegion(int inputSizeX, int inputSizeY, int colGridSizeX, int colGridS
   region->pctMinOverlap = pctMinOverlap;
   region->pctLocalActivity = pctLocalActivity;
 
-  region->spatialLearning = false;
+  region->spatialHardcoded = false;
+  region->spatialLearning = true;
   region->temporalLearning = true;
 
   /*Reduce the number of columns and map centers of input x,y correctly.
@@ -228,7 +241,8 @@ Region* newRegion(int inputSizeX, int inputSizeY, int colGridSizeX, int colGridS
 
   /*Create the columns based on the size of the input data to connect to.*/
   region->columns = malloc(region->numCols * sizeof(Column));
-  /*TODO check for NULL on allocation fail*/
+  if(region->columns==NULL) return NULL;
+
   int cx,cy;
   for(cx=0; cx<region->width; ++cx) {
     for(cy=0; cy<region->height; ++cy) {
@@ -239,13 +253,13 @@ Region* newRegion(int inputSizeX, int inputSizeY, int colGridSizeX, int colGridS
     }
   }
 
-/*    #size the output array as double grid for 4-cell, else just pad the first
-//    #array dimension for 2 or 3 cell (and same size if just 1-cell)
-//    if cellsPerCol==4:
-//      outShape = (len(self.columnGrid)*2, len(self.columnGrid[0])*2)
-//    else:
-//      outShape = (len(self.columnGrid)*cellsPerCol, len(self.columnGrid[0]))
-//    self.outData = numpy.zeros(outShape, dtype=numpy.uint8)*/
+  /*  #size the output array as double grid for 4-cell, else just pad the first
+  //  #array dimension for 2 or 3 cell (and same size if just 1-cell)
+  //  if cellsPerCol==4:
+  //    outShape = (len(self.columnGrid)*2, len(self.columnGrid[0])*2)
+  //  else:
+  //    outShape = (len(self.columnGrid)*cellsPerCol, len(self.columnGrid[0]))
+  //  self.outData = numpy.zeros(outShape, dtype=numpy.uint8)*/
 
   /*how far apart are 2 Columns in terms of input space; calc radius from that*/
   float inputRadiusf = region->localityRadius*region->xSpace;
@@ -264,14 +278,26 @@ Region* newRegion(int inputSizeX, int inputSizeY, int colGridSizeX, int colGridS
   /*int longerSide = max(_inputWidth, _inputHeight);
   //random.seed(42) #same connections each time for easier debugging*/
 
+  /* create array of InputCells and array to hold subset of InputCells for
+   * selecting random subsets within radius of spatial pooler columns */
+  int i,s,x,y;
+  int nc = region->nInput;
+  region->inputCells = malloc(nc * sizeof(Cell));
+  Cell** ssInputCells = malloc(nc * sizeof(Cell*));
+  Cell** randCells = malloc(synapsesPerSegment * sizeof(Cell*));
+  for(i=0; i<nc; ++i) {
+    initInputCell(&(region->inputCells[i]), region, i);
+    ssInputCells[i] = &(region->inputCells[i]);
+  }
+
   int inputRadius = roundf(inputRadiusf);
   int minY = 0;
   int maxY = region->inputHeight-1;
   int minX = 0;
   int maxX = region->inputWidth-1;
-  int i;
+
   for(i=0; i<region->numCols; ++i) {
-    if(HARDCODE_SPATIAL) /*no proximal synpases for hardcoded case*/
+    if(region->spatialHardcoded) /*no proximal synpases for hardcoded case*/
       break;
     Column* col = &(region->columns[i]);
 
@@ -281,37 +307,67 @@ Region* newRegion(int inputSizeX, int inputSizeY, int colGridSizeX, int colGridS
       maxY = min(region->inputHeight-1, col->iy+inputRadius);
       minX = max(0, col->ix-inputRadius);
       maxX = min(region->inputWidth-1, col->ix+inputRadius);
-    }
-    /*TODO connect initial proximal synapses
-    //ensure we sample unique input positions to connect synapses to*/
-/*    Set<Point> allPos = new HashSet<Point>();
-//    for(int x=minX; x<=maxX; ++x) {
-//      for(int y=minY; y<=maxY; ++y)
-//        allPos.add(new Point(x,y));
-//    }
-//
-//    Set<Point> randPos = new HashSet<Point>();
-//    Util.createRandomSubset(allPos, randPos, synapsesPerSegment, rand);
-//    for(Point pt : randPos) {
-//      InputCell icell = new InputCell(
-//          pt.x, pt.y, (pt.y*_inputHeight)+pt.x, _inputData);
-//      if(FULL_DEFAULT_SPATIAL_PERMANENCE)
-//        col.addProximalSynapse(icell, 1.0f);
-//      else {
-//        double permanence = Synapse.CONNECTED_PERM +
-//                           (Synapse.PERMANENCE_INC*rand.nextGaussian());
-//        permanence = Math.max(0.0, permanence);
-//        double dx = col.ix()-pt.x;
-//        double dy = col.iy()-pt.y;
-//        double distance = Math.sqrt((dx*dx) + (dy*dy));
-//        double ex = distance / (longerSide*RAD_BIAS_STD_DEV);
-//        double localityBias = (RAD_BIAS_PEAK/0.4) * Math.exp((ex*ex)/-2);
-//        col.addProximalSynapse(icell, (float)(permanence*localityBias));
-//      }
-//    }*/
-  }
 
-  if(!HARDCODE_SPATIAL)
+      /*repopulate inputCells with cells within locality radius*/
+      s=0;
+      for(x=minX; x<=maxX; ++x) {
+        for(y=minY; y<=maxY; ++y) {
+          int index = (y*region->inputWidth)+x;
+          ssInputCells[s++] = &(region->inputCells[index]);
+        }
+      }
+      nc = s;
+    }
+
+    /*connect initial proximal synapses.
+    //ensure we sample unique input positions to connect synapses to*/
+    randomSample(ssInputCells, nc, randCells, synapsesPerSegment);
+
+    /*printf("Column %d (%d, %d) connected to: ", i, col->cx, col->cy);*/
+    for(s=0; s<synapsesPerSegment; ++s) {
+      Cell* icell = randCells[s];
+      /*printf("%d ", icell->index);*/
+      if(FULL_DEFAULT_SPATIAL_PERMANENCE) {
+        createSynapse(col->proximalSegment, icell, MAX_PERM);
+      }
+      else {
+        /*default to all synapses having connected + 1/3.  Unused synapses will
+         * be decremented away over time.  This is easier than having half the
+         * synapses disconnected since it's harder for them to become connected
+         * when first learning.*/
+        int permanence = CONNECTED_PERM + (CONNECTED_PERM/3);
+        createSynapse(col->proximalSegment, icell, permanence);
+      }
+    }
+    /*printf("\n");*/
+
+    processSegment(col->proximalSegment); /*calculate initial synapse connections*/
+
+    /* This is code suggested by the Numenta doc.  I use fixed default permanence
+     * instead to make initial learning faster/easier (based on my experiments).
+    //    Util.createRandomSubset(allPos, randPos, synapsesPerSegment, rand);
+    //    for(Point pt : randPos) {
+    //      InputCell icell = new InputCell(
+    //          pt.x, pt.y, (pt.y*_inputHeight)+pt.x, _inputData);
+    //      if(FULL_DEFAULT_SPATIAL_PERMANENCE)
+    //        col.addProximalSynapse(icell, 1.0f);
+    //      else {
+    //        double permanence = Synapse.CONNECTED_PERM +
+    //                           (Synapse.PERMANENCE_INC*rand.nextGaussian());
+    //        permanence = Math.max(0.0, permanence);
+    //        double dx = col.ix()-pt.x;
+    //        double dy = col.iy()-pt.y;
+    //        double distance = Math.sqrt((dx*dx) + (dy*dy));
+    //        double ex = distance / (longerSide*RAD_BIAS_STD_DEV);
+    //        double localityBias = (RAD_BIAS_PEAK/0.4) * Math.exp((ex*ex)/-2);
+    //        col.addProximalSynapse(icell, (float)(permanence*localityBias));
+    //      }
+    //    }*/
+  }
+  free(randCells);
+  free(ssInputCells);
+
+  if(!region->spatialHardcoded)
     region->inhibitionRadius = averageReceptiveFieldSize(region);
   else
     region->inhibitionRadius = 0;
@@ -325,15 +381,15 @@ Region* newRegion(int inputSizeX, int inputSizeY, int colGridSizeX, int colGridS
   region->desiredLocalActivity = max(2, round(dla));
 
   if(DEBUG) {
-    printf("\nRegion Created (C++)");
+    printf("\nRegion Created (ANSI C)");
     printf("\ncolumnGrid = (%d, %d)", colGridSizeX, colGridSizeY);
     printf("\nxSpace, ySpace = %f %f", region->xSpace, region->ySpace);
     printf("\ninputRadius = %d", inputRadius);
+    printf("\ninitial inhibitionRadius = %f", region->inhibitionRadius);
     printf("\ndesiredLocalActivity = %d", region->desiredLocalActivity);
     printf("\nsynapsesPerProximalSegment = %d", synapsesPerSegment);
     printf("\nminOverlap = %g", region->minOverlap);
     printf("\nconPerm,permInc = %i %i\n", CONNECTED_PERM, PERMANENCE_INC);
-    /*printf("outputGrid = ", outData.shape);*/
   }
 
   return region;
@@ -351,6 +407,9 @@ void deleteRegion(Region* region) {
     deleteColumn(&(region->columns[i]));
   free(region->columns);
   region->columns = NULL;
+
+  free(region->inputCells);
+  region->inputCells = NULL;
 }
 
 /**
@@ -421,16 +480,25 @@ int numRegionSegments(Region* region, int predictionSteps) {
 }
 
 /**
- * def __kthScore(self, cols, k):
- *  """ Given the list of columns, return the k'th highest overlap value. """
- *  sorted = []
- *  for c in cols:
- *    sorted.append(c.overlap)
- *  sorted.sort()
- *  i = max(0, min(len(sorted)-1, len(sorted)-k))
- *  return sorted[i]
+ * Return the total number of active columns in the Region as calculated from
+ * the most recently run time step.  For hardcoded Regions this number will match
+ * the number of 1 values from the input data.  For spatial pooling Regions this
+ * number will represent the number of winning columns after inhibition.
  */
-float kthScore(Region* region, Column* col, int k) {
+int numRegionActiveColumns(Region* region) {
+  int i, c=0;
+  for(i=0; i<region->numCols; ++i)
+    c += region->columns[i].isActive ? 1 : 0;
+  return c;
+}
+
+/**
+ * Return true if the given Column has an overlap value that is at least the
+ * k'th largest amongst all neighboring columns within inhibitionRadius.
+ * This function is effectively determining which columns are to be inhibited during
+ * the spatial pooling procedure of the region.
+ */
+bool isWithinKthScore(Region* region, Column* col, int k) {
   /*first find bounds of neighbors within inhibitionRadius of 'col'*/
   int irad = round(region->inhibitionRadius);
   int x0 = max(0, min(col->cx-1, col->cx-irad));
@@ -441,22 +509,16 @@ float kthScore(Region* region, Column* col, int k) {
   x1 = min(region->width, x1+1); /*extra 1's for correct looping*/
   y1 = min(region->height, y1+1);
 
-  int x,y;
+  /*Loop over all columns that are within inhibitionRadius of given column*/
+  /* Count how many neighbor columns have strictly greater overlap than our
+   * given column. If this count is <k then we are within the kth score*/
+  int x,y, c=0;
   for(x=x0; x<x1; ++x) {
     for(y=y0; y<y1; ++y) {
-      /*cols.push_back(getColumn(x,y));*/
+      c += (region->columns[(y*region->width)+x].overlap > col->overlap);
     }
   }
-
-/*  TreeSet<Integer> overlaps = new TreeSet<Integer>();
-//  for(Column col : cols)
-//    overlaps.add(col.getOverlap());
-//  int i = Math.max(0, overlaps.size()-k);
-//  return (Integer)overlaps.toArray()[i];
-  //get overlap values of each of the neighbor columns
-  //return the kth largest.  need to sort, then return sorted[k]*/
-
-  return 1.0;/*TODO implement kthScore for non-hardcoded spatial pooling*/
+  return c < k;/*if count is < k, we are within the kth score of all neighbors*/
 }
 
 /**
@@ -499,61 +561,48 @@ float kthScore(Region* region, Column* col, int k) {
 void performSpatialPooling(Region* region) {
   int i;
   /*If hardcoded, we assume the input bits correspond directly to active columns*/
-  if(HARDCODE_SPATIAL) {
+  if(region->spatialHardcoded) {
+    #pragma omp parallel for
     for(i=0; i<region->numCols; ++i)
       region->columns[i].isActive = region->inputData[i]==1;
     return;
   }
 
+  /*First toggle isActive flag per input cell based on state of data array*/
+  #pragma omp parallel for
+  for(i=0; i<region->nInput; ++i)
+    region->inputCells[i].isActive = region->inputData[i]==1;
+
   /*Phase 1: Compute Column Input Overlaps*/
+  #pragma omp parallel for
   for(i=0; i<region->numCols; ++i)
     computeOverlap(&(region->columns[i]));
 
   /*Phase 2: Compute Active Columns (Winners after inhibition)*/
+  #pragma omp parallel for
   for(i=0; i<region->numCols; ++i) {
     Column* col = &(region->columns[i]);
     col->isActive = false;
     if(col->overlap > 0) {
-      /*neighbors(neighborCols, col);*/
-      float minLocalActivity = kthScore(region, col, region->desiredLocalActivity);
-      if(col->overlap >= minLocalActivity)
+      /*only activate column if its overlap is within kth largest of its neighbors*/
+      if(isWithinKthScore(region, col, region->desiredLocalActivity)) {
         col->isActive = true;
+
+        /*Phase 3.1: Synapse learning occurs on active/winning columns*/
+        if(region->spatialLearning)
+          updateColumnPermanences(col);
+      }
     }
+
+    /*Phase 3.2: Column Boosting (only if learning enabled)*/
+    if(region->spatialLearning)
+      performBoosting(col);
   }
 
-  /*Phase 3: Synapse Boosting (Learning)*/
-  if(region->spatialLearning) {
-    for(i=0; i<region->numCols; ++i) {
-      if(region->columns[i].isActive)
-        updateColumnPermanences(&(region->columns[i]));
-    }
-
-    for(i=0; i<region->numCols; ++i)
-      performBoosting(&(region->columns[i]));
-
+  /*Phase 3.3: Recalculate inhibition radius for columns*/
+  if(region->spatialLearning)
     region->inhibitionRadius = averageReceptiveFieldSize(region);
-  }
 }
-
-/**
- *  Populate the Column vector reference with all columns that are
- *  within inhibitionRadius of the specified input column.
- */
-/*void neighbors(Region* region, Column* col) {
-//  int irad = round(_inhibitionRadius);
-//  int x0 = max(0, min(col->cx()-1, col->cx()-irad));
-//  int y0 = max(0, min(col->cy()-1, col->cy()-irad));
-//  int x1 = min(_width, max(col->cx()+1, col->cx()+irad));
-//  int y1 = min(_height, max(col->cy()+1, col->cy()+irad));
-//
-//  x1 = min(_width, x1+1); //extra 1's for correct looping
-//  y1 = min(_height, y1+1);
-//
-//  for(int x=x0; x<x1; ++x) {
-//    for(int y=y0; y<y1; ++y)
-//      cols.push_back(getColumn(x,y));
-//  }
-//}*/
 
 /**
  * Perform one time step of Temporal Pooling for this Region.
