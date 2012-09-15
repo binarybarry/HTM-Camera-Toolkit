@@ -127,6 +127,7 @@ Region* newRegionHardcoded(int inputSizeX, int inputSizeY, int localityRadius,
   region->inputHeight = inputSizeY;
   region->iters = 0;
   region->inputData = inputData;
+  region->inputCells = NULL;
 
   region->localityRadius = localityRadius;
   region->cellsPerCol = cellsPerCol;
@@ -408,7 +409,8 @@ void deleteRegion(Region* region) {
   free(region->columns);
   region->columns = NULL;
 
-  free(region->inputCells);
+  if(region->inputCells!=NULL)
+    free(region->inputCells);
   region->inputCells = NULL;
 }
 
