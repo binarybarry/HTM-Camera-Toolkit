@@ -415,6 +415,42 @@ void deleteRegion(Region* region) {
 }
 
 /**
+ * Populate the outData array with the current prediction values for each
+ * column in the Region.  The array must be have a size equal to the number of
+ * columns in the Region (region->numCols). The value returned for a column
+ * represents the fewest number of time steps the column believes an activation
+ * will occur. For example a 1 value means the column is predicting it will
+ * become active in the very next time step (t+1).  A value of 2 means it expects
+ * activation in 2 time steps (t+2) etc.  A value of 0 means the column is not
+ * currently making any prediction.
+ * @param outData this array will be populated with the prediction values for
+ * each column in the region based on the most recently processed time step.
+ * This array must be have length equal to the number of columns in the
+ * region.
+ */
+void getColumnPredictions(Region* region, char* outData) {
+  int i,j;
+  for(i=0; i<region->numCols; ++i) {
+    Column* col = &(region->columns[i]);
+    outData[i] = 0;
+
+    /*if a column has multiple predicting cells, find the one that is making
+      the prediction that will happen the earliest and store that value*/
+    bool colOK = false;
+    char p = MAX_TIME_STEPS;
+    for(j=0; j<col->numCells; ++j) {
+      Cell* cell = &(col->cells[j]);
+      if(cell->isPredicting && cell->predictionSteps < p) {
+        p = cell->predictionSteps;
+        colOK = true;
+      }
+    }
+    if(colOK)
+      outData[(col->cy*region->width)+col->cx] = p;
+  }
+}
+
+/**
  * Calculate both the activation accuracy and the prediction accuracy for all
  * the column cells in this region within the last processed time step.
  * The activation accuracy is the number of correctly predicted active columns

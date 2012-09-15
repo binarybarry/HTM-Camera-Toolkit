@@ -52,6 +52,7 @@ Region* newRegion(int inputSizeX, int inputSizeY, int colGridSizeX, int colGridS
     float pctLocalActivity, int cellsPerCol, int segActiveThreshold,
     int newSynapseCount, char* inputData);
 void deleteRegion(Region* region);
+void getColumnPredictions(Region* region, char* outData);
 void getLastAccuracy(Region* region, float* result);
 int numRegionSegments(Region* region, int predictionSteps);
 int numRegionActiveColumns(Region* region);

@@ -284,6 +284,7 @@ void testRegion1() {
 
   deleteRegion(region);
   free(region);
+  free(data);
 
   printf("OK\n");
 }
@@ -332,6 +333,7 @@ void testRegion2() {
 
   deleteRegion(region);
   free(region);
+  free(data);
 
   printf("OK\n");
 }
@@ -365,6 +367,8 @@ void testRegion3() {
   int segActiveThreshold = 10;
   int newSynapseCount = 10;
 
+  char* outData = malloc(colGridSizeX * colGridSizeY);
+
   Region* region = newRegion(inputSizeX, inputSizeY, colGridSizeX, colGridSizeY,
         pctInputPerCol, pctMinOverlap, localityRadius, pctLocalActivity, cellsPerCol,
         segActiveThreshold, newSynapseCount, data);
@@ -388,6 +392,21 @@ void testRegion3() {
       int nc = numRegionActiveColumns(region);
       if(DEBUG)
         printf(" nc:%d", nc);
+
+      /*Get the current column predictions.  outData is size 32x32 to match the
+       * column grid.  each value represents whether the column is predicted to
+       * happen soon.  a value of 1 indicates the column is predicted to be active
+       * in t+1, value of 2 for t+2, etc.  value of 0 indicates column is not
+       * being predicted any time soon. */
+      getColumnPredictions(region, outData);
+      int p,n1=0, n2=0, n3=0;
+      for(p=0; p<region->numCols; ++p) {
+        n1 += outData[p]==1 ? 1 : 0;
+        n2 += outData[p]==2 ? 1 : 0;
+        n3 += outData[p]==3 ? 1 : 0;
+      }
+      if(DEBUG)
+        printf(" np:%i %i %i", n1, n2, n3);
     }
     if(DEBUG)
       printf("\n");
@@ -397,6 +416,8 @@ void testRegion3() {
 
   deleteRegion(region);
   free(region);
+  free(data);
+  free(outData);
 
   printf("OK\n");
 }
@@ -539,6 +560,7 @@ void testRegionPerformance(unsigned int nunique) {
 
   deleteRegion(region);
   free(region);
+  free(data);
 
   printf("OK\n");
 }
@@ -677,6 +699,7 @@ void testRegionPerformanceDickens() {
 
   deleteRegion(region);
   free(region);
+  free(data);
 
   printf("OK\n");
 }
