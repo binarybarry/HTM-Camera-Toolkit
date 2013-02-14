@@ -339,7 +339,7 @@ void testRegion2() {
 }
 
 /**
- * This test creates a Region of size 32x32 columsn that accepts a larger
+ * This test creates a Region of size 32x32 columns that accepts a larger
  * input of size 128x128.  Each input has a 128x128 sparse bit representation with about
  * 5% of the bits active.  This example is much closer to a Region that works on
  * real world sized data.  It tests the ability of the spatial pooler to produce a
@@ -414,10 +414,76 @@ void testRegion3() {
   if(DEBUG)
     printf("total iters = %i\n", iters);
 
+
+
   deleteRegion(region);
   free(region);
   free(data);
   free(outData);
+
+  printf("OK\n");
+}
+
+/**
+ * This test creates a hardcoded Region of size 250x1 and feeds in data that
+ * has 10% (25) elements active.  We then repeat the same sequence 10 times to
+ * try to teach the region to learn the full sequence.  From there we wish to
+ * introduce an "anomaly", that is an input that is not expected.  We detect this
+ * by examining the prediction accuracy value.  Smaller accuracy indicates a larger
+ * anomaly.  For this test we consider accuracy values <30% to be large anomalies, while
+ * values 30%-70% are 'possible' anomalies.
+ */
+void testRegionAnomalyDetection() {
+  printf("testRegionAnomalyDetection()...\n");
+
+  float acc[2];
+  char* data = malloc(250 * sizeof(char));
+  Region* region = newRegionHardcoded(250,1, 0, 1, 3, 4, data);
+  srand(42);
+
+  /*create a sequence of length 10.  repeat it 10 times and check region accuracy. */
+  int i,j,k;
+  for(k=0; k<11; ++k) {
+    /*on final iteration, disable learning and detect anomalies in inference*/
+    if(k==10) region->temporalLearning = false;
+
+    for(i=0; i<10; ++i) {
+      for(j=0; j<250; ++j) /*reset all data to 0*/
+        data[j] = 0;
+      for(j=0; j<25; ++j) /*assign next set of 25 to 1's*/
+        data[(i*25)+j] = 1;
+
+      /* introduce unexpected/anomalous inputs randomly on last iteration */
+      if(k >= 10 && rand() % 4 == 0) {
+        for(j=0; j<250; ++j) /*reset all data to 0*/
+          data[j] = 0;
+        for(j=0; j<25; ++j) { /*randomly assign set of 25 to 1's*/
+          int ri = rand() % 10;
+          data[(ri*25)+j] = 1;
+        }
+      }
+
+      runOnce(region);
+
+      getLastAccuracy(region, acc);
+
+      if(k>1 || (k==1 && i>=1)) {
+        /*check for prediction accuracy <30% to be consider 'anomaly'*/
+        if(acc[0]<0.3f && acc[1]<0.3f) {
+          printf("Anomaly Detected (<0.3 accuracy)! Input (%i %i) produced: %f, %f\n",
+              k, i, acc[0],acc[1]);
+        }/*printf("k%i i%i:  aAcc=%f  pAcc=%f\n", k, i, acc[0], acc[1]);*/
+        else if(acc[0]<0.7f && acc[1]<0.7f) {
+          printf("Possible Anomaly Detected (<0.7 accuracy). Input (%i %i) produced: %f, %f\n",
+              k, i, acc[0],acc[1]);
+        }
+      }
+    }
+  }
+
+  deleteRegion(region);
+  free(region);
+  free(data);
 
   printf("OK\n");
 }
@@ -716,6 +782,7 @@ int main(void) {
   /*testRegionPerformance(0);*/
   /*testRegionPerformanceDickens();*/
   testRegion3();
+  testRegionAnomalyDetection();
 
 	return EXIT_SUCCESS;
 }
